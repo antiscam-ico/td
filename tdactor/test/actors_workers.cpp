@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -7,10 +7,9 @@
 #include "td/utils/tests.h"
 
 #include "td/actor/actor.h"
+#include "td/actor/ConcurrentScheduler.h"
 
-#include "td/utils/logging.h"
-
-REGISTER_TESTS(actors_workers);
+#include "td/utils/SliceBuilder.h"
 
 namespace {
 
@@ -57,14 +56,14 @@ class Manager final : public Actor {
       , query_size_(query_size) {
   }
 
-  class Callback : public PowerWorker::Callback {
+  class Callback final : public PowerWorker::Callback {
    public:
     Callback(ActorId<Manager> actor_id, int worker_id) : actor_id_(actor_id), worker_id_(worker_id) {
     }
-    void on_ready(int query, int result) override {
+    void on_ready(int query, int result) final {
       send_closure(actor_id_, &Manager::on_ready, worker_id_, query, result);
     }
-    void on_closed() override {
+    void on_closed() final {
       send_closure_later(actor_id_, &Manager::on_closed, worker_id_);
     }
 
@@ -73,7 +72,7 @@ class Manager final : public Actor {
     int worker_id_;
   };
 
-  void start_up() override {
+  void start_up() final {
     int i = 0;
     for (auto &worker : workers_) {
       ref_cnt_++;
@@ -110,9 +109,7 @@ class Manager final : public Actor {
   int query_size_;
 };
 
-void test_workers(int threads_n, int workers_n, int queries_n, int query_size) {
-  SET_VERBOSITY_LEVEL(VERBOSITY_NAME(ERROR));
-
+static void test_workers(int threads_n, int workers_n, int queries_n, int query_size) {
   ConcurrentScheduler sched;
   sched.init(threads_n);
 

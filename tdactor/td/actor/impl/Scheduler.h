@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -151,11 +151,6 @@ inline void Scheduler::destroy_actor(ActorInfo *actor_info) {
   CHECK(actor_count_ >= 0);
 }
 
-inline void Scheduler::do_custom_event(ActorInfo *actor_info, CustomEvent &event) {
-  VLOG(actor) << *actor_info << " Event::Custom";
-  event.run(actor_info->get_actor_unsafe());
-}
-
 template <class RunFuncT, class EventFuncT>
 void Scheduler::flush_mailbox(ActorInfo *actor_info, const RunFuncT &run_func, const EventFuncT &event_func) {
   auto &mailbox = actor_info->mailbox_;
@@ -170,10 +165,10 @@ void Scheduler::flush_mailbox(ActorInfo *actor_info, const RunFuncT &run_func, c
     if (guard.can_run()) {
       (*run_func)(actor_info);
     } else {
-      mailbox.insert(begin(mailbox) + i, (*event_func)());
+      mailbox.insert(mailbox.begin() + i, (*event_func)());
     }
   }
-  mailbox.erase(begin(mailbox), begin(mailbox) + i);
+  mailbox.erase(mailbox.begin(), mailbox.begin() + i);
 }
 
 inline void Scheduler::send_to_scheduler(int32 sched_id, const ActorId<> &actor_id, Event &&event) {

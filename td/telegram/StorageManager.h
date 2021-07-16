@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -26,10 +26,10 @@ struct DatabaseStats {
   DatabaseStats() = default;
   explicit DatabaseStats(string debug) : debug(debug) {
   }
-  tl_object_ptr<td_api::databaseStatistics> as_td_api() const;
+  tl_object_ptr<td_api::databaseStatistics> get_database_statistics_object() const;
 };
 
-class StorageManager : public Actor {
+class StorageManager final : public Actor {
  public:
   StorageManager(ActorShared<> parent, int32 scheduler_id);
   void get_storage_stats(bool need_all_files, int32 dialog_limit, Promise<FileStats> promise);
@@ -41,9 +41,9 @@ class StorageManager : public Actor {
   void on_new_file(int64 size, int64 real_size, int32 cnt);
 
  private:
-  static constexpr uint32 GC_EACH = 60 * 60 * 24;  // 1 day
-  static constexpr uint32 GC_DELAY = 60;
-  static constexpr uint32 GC_RAND_DELAY = 60 * 15;
+  static constexpr int GC_EACH = 60 * 60 * 24;  // 1 day
+  static constexpr int GC_DELAY = 60;
+  static constexpr int GC_RAND_DELAY = 60 * 15;
 
   ActorShared<> parent_;
 
@@ -77,9 +77,9 @@ class StorageManager : public Actor {
   int32 ref_cnt_{1};
   bool is_closed_{false};
   ActorShared<> create_reference();
-  void start_up() override;
-  void hangup_shared() override;
-  void hangup() override;
+  void start_up() final;
+  void hangup_shared() final;
+  void hangup() final;
 
   // Gc
   ActorOwn<FileGcWorker> gc_worker_;
@@ -99,7 +99,7 @@ class StorageManager : public Actor {
   void save_last_gc_timestamp();
   void schedule_next_gc();
 
-  void timeout_expired() override;
+  void timeout_expired() final;
 };
 
 }  // namespace td

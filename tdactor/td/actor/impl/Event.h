@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -8,7 +8,6 @@
 
 #include "td/utils/Closure.h"
 #include "td/utils/common.h"
-#include "td/utils/format.h"
 #include "td/utils/logging.h"
 #include "td/utils/StringBuilder.h"
 
@@ -58,26 +57,26 @@ class CustomEvent {
 };
 
 template <class ClosureT>
-class ClosureEvent : public CustomEvent {
+class ClosureEvent final : public CustomEvent {
  public:
-  void run(Actor *actor) override {
+  void run(Actor *actor) final {
     closure_.run(static_cast<typename ClosureT::ActorType *>(actor));
   }
-  CustomEvent *clone() const override {
+  CustomEvent *clone() const final {
     return new ClosureEvent<ClosureT>(closure_.clone());
   }
   template <class... ArgsT>
   explicit ClosureEvent(ArgsT &&... args) : closure_(std::forward<ArgsT>(args)...) {
   }
 
-  void start_migrate(int32 sched_id) override {
+  void start_migrate(int32 sched_id) final {
     closure_.for_each([sched_id](auto &obj) {
       using ::td::start_migrate;
       start_migrate(obj, sched_id);
     });
   }
 
-  void finish_migrate() override {
+  void finish_migrate() final {
     closure_.for_each([](auto &obj) {
       using ::td::finish_migrate;
       finish_migrate(obj);
@@ -89,12 +88,12 @@ class ClosureEvent : public CustomEvent {
 };
 
 template <class LambdaT>
-class LambdaEvent : public CustomEvent {
+class LambdaEvent final : public CustomEvent {
  public:
-  void run(Actor *actor) override {
+  void run(Actor *actor) final {
     f_();
   }
-  CustomEvent *clone() const override {
+  CustomEvent *clone() const final {
     LOG(FATAL) << "Not supported";
     return nullptr;
   }
@@ -242,8 +241,27 @@ class Event {
   }
 };
 
-inline StringBuilder &operator<<(StringBuilder &sb, const Event &e) {
-  return sb << tag("Event", static_cast<int32>(e.type));
+inline StringBuilder &operator<<(StringBuilder &string_builder, const Event &e) {
+  string_builder << "Event::";
+  switch (e.type) {
+    case Event::Type::Start:
+      return string_builder << "Start";
+    case Event::Type::Stop:
+      return string_builder << "Stop";
+    case Event::Type::Yield:
+      return string_builder << "Yield";
+    case Event::Type::Hangup:
+      return string_builder << "Hangup";
+    case Event::Type::Timeout:
+      return string_builder << "Timeout";
+    case Event::Type::Raw:
+      return string_builder << "Raw";
+    case Event::Type::Custom:
+      return string_builder << "Custom";
+    case Event::Type::NoType:
+    default:
+      return string_builder << "NoType";
+  }
 }
 
 }  // namespace td

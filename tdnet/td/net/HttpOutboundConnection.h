@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -25,9 +25,9 @@ class HttpOutboundConnection final : public detail::HttpConnectionBase {
     virtual void on_connection_error(Status error) = 0;  // TODO rename to on_error
   };
   HttpOutboundConnection(SocketFd fd, SslStream ssl_stream, size_t max_post_size, size_t max_files, int32 idle_timeout,
-                         ActorShared<Callback> callback)
+                         ActorShared<Callback> callback, int32 slow_scheduler_id = -1)
       : HttpConnectionBase(HttpConnectionBase::State::Write, std::move(fd), std::move(ssl_stream), max_post_size,
-                           max_files, idle_timeout)
+                           max_files, idle_timeout, slow_scheduler_id)
       , callback_(std::move(callback)) {
   }
   // Inherited interface
@@ -36,9 +36,9 @@ class HttpOutboundConnection final : public detail::HttpConnectionBase {
   // void write_error(Status error);
 
  private:
-  void on_query(unique_ptr<HttpQuery> query) override;
-  void on_error(Status error) override;
-  void hangup() override {
+  void on_query(unique_ptr<HttpQuery> query) final;
+  void on_error(Status error) final;
+  void hangup() final {
     callback_.release();
     HttpConnectionBase::hangup();
   }

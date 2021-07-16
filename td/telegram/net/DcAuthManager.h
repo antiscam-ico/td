@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -15,12 +15,15 @@
 
 #include "td/utils/buffer.h"
 #include "td/utils/common.h"
+#include "td/utils/logging.h"
 
 #include <memory>
 
 namespace td {
 
-class DcAuthManager : public NetQueryCallback {
+extern int VERBOSITY_NAME(dc);
+
+class DcAuthManager final : public NetQueryCallback {
  public:
   explicit DcAuthManager(ActorShared<> parent);
 
@@ -44,7 +47,6 @@ class DcAuthManager : public NetQueryCallback {
   ActorShared<> parent_;
 
   std::vector<DcInfo> dcs_;
-  bool was_auth_{false};
   DcId main_dc_id_;
   bool close_flag_{false};
   Promise<> destroy_promise_;
@@ -54,11 +56,11 @@ class DcAuthManager : public NetQueryCallback {
 
   void update_auth_key_state();
 
-  void on_result(NetQueryPtr result) override;
+  void on_result(NetQueryPtr result) final;
   void dc_loop(DcInfo &dc);
 
   void destroy_loop();
-  void loop() override;
+  void loop() final;
 };
 
 }  // namespace td

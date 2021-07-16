@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -25,14 +25,14 @@ NetQueryPtr NetQueryCreator::create(const telegram_api::Function &function, DcId
 
 NetQueryPtr NetQueryCreator::create(uint64 id, const telegram_api::Function &function, DcId dc_id, NetQuery::Type type,
                                     NetQuery::AuthFlag auth_flag) {
-  LOG(DEBUG) << "Create query " << to_string(function);
+  LOG(INFO) << "Create query " << to_string(function);
   auto storer = DefaultStorer<telegram_api::Function>(function);
   BufferSlice slice(storer.size());
   auto real_size = storer.store(slice.as_slice().ubegin());
   LOG_CHECK(real_size == slice.size()) << real_size << " " << slice.size() << " "
                                        << format::as_hex_dump<4>(Slice(slice.as_slice()));
 
-  int32 tl_constructor = NetQuery::tl_magic(slice);
+  int32 tl_constructor = function.get_id();
 
   size_t MIN_GZIPPED_SIZE = 128;
   auto gzip_flag = slice.size() < MIN_GZIPPED_SIZE ? NetQuery::GzipFlag::Off : NetQuery::GzipFlag::On;
@@ -59,13 +59,18 @@ NetQueryPtr NetQueryCreator::create(uint64 id, const telegram_api::Function &fun
     auto td = G()->td();
     if (!td.empty()) {
       auto auth_manager = td.get_actor_unsafe()->auth_manager_.get();
-      if (auth_manager && auth_manager->is_bot()) {
+      if (auth_manager != nullptr && auth_manager->is_bot()) {
         total_timeout_limit = 8;
+      }
+      if ((auth_manager == nullptr || !auth_manager->was_authorized()) && auth_flag == NetQuery::AuthFlag::On &&
+          tl_constructor != telegram_api::auth_exportAuthorization::ID &&
+          tl_constructor != telegram_api::auth_bindTempAuthKey::ID) {
+        LOG(ERROR) << "Send query before authorization: " << to_string(function);
       }
     }
   }
   auto query = object_pool_.create(NetQuery::State::Query, id, std::move(slice), BufferSlice(), dc_id, type, auth_flag,
-                                   gzip_flag, tl_constructor, total_timeout_limit);
+                                   gzip_flag, tl_constructor, total_timeout_limit, net_query_stats_.get());
   query->set_cancellation_token(query.generation());
   return query;
 }

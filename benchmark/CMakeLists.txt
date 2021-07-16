@@ -1,4 +1,6 @@
-cmake_minimum_required(VERSION 3.0.2 FATAL_ERROR)
+if ((CMAKE_MAJOR_VERSION LESS 3) OR (CMAKE_VERSION VERSION_LESS "3.0.2"))
+  message(FATAL_ERROR "CMake >= 3.0.2 is required")
+endif()
 
 if (NOT OPENSSL_FOUND)
   find_package(OpenSSL REQUIRED)
@@ -8,6 +10,13 @@ endif()
 #TODO: all benchmarks in one file
 add_executable(bench_crypto bench_crypto.cpp)
 target_link_libraries(bench_crypto PRIVATE tdutils ${OPENSSL_CRYPTO_LIBRARY} ${CMAKE_DL_LIBS} ${ZLIB_LIBRARIES})
+if (WIN32)
+  if (MINGW)
+    target_link_libraries(bench_crypto PRIVATE ws2_32 mswsock crypt32)
+  else()
+    target_link_libraries(bench_crypto PRIVATE ws2_32 Mswsock Crypt32)
+  endif()
+endif()
 target_include_directories(bench_crypto SYSTEM PRIVATE ${OPENSSL_INCLUDE_DIR})
 
 add_executable(bench_actor bench_actor.cpp)

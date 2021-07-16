@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -38,7 +38,9 @@ class ConnectionCreator;
 class ContactsManager;
 class FileManager;
 class FileReferenceManager;
+class GroupCallManager;
 class LanguagePackManager;
+class LinkManager;
 class MessagesManager;
 class MtprotoHeader;
 class NetQueryDispatcher;
@@ -58,17 +60,17 @@ class WebPagesManager;
 
 namespace td {
 
-class Global : public ActorContext {
+class Global final : public ActorContext {
  public:
   Global();
-  ~Global() override;
+  ~Global() final;
   Global(const Global &) = delete;
   Global &operator=(const Global &) = delete;
   Global(Global &&other) = delete;
   Global &operator=(Global &&other) = delete;
 
   static constexpr int32 ID = -572104940;
-  int32 get_id() const override {
+  int32 get_id() const final {
     return ID;
   }
 
@@ -99,12 +101,13 @@ class Global : public ActorContext {
     return parameters_.use_test_dc;
   }
 
-  bool ignore_backgrond_updates() const;
+  bool ignore_background_updates() const;
 
   NetQueryCreator &net_query_creator() {
-    return net_query_creator_.get();
+    return *net_query_creator_.get();
   }
 
+  void set_net_query_stats(std::shared_ptr<NetQueryStats> net_query_stats);
   void set_net_query_dispatcher(unique_ptr<NetQueryDispatcher> net_query_dispatcher);
 
   NetQueryDispatcher &net_query_dispatcher() {
@@ -113,13 +116,13 @@ class Global : public ActorContext {
   }
 
   bool have_net_query_dispatcher() const {
-    return net_query_dispatcher_ != nullptr;
+    return net_query_dispatcher_.get() != nullptr;
   }
 
   void set_shared_config(unique_ptr<ConfigShared> shared_config);
 
   ConfigShared &shared_config() {
-    CHECK(shared_config_ != nullptr);
+    CHECK(shared_config_.get() != nullptr);
     return *shared_config_;
   }
 
@@ -214,11 +217,25 @@ class Global : public ActorContext {
     file_reference_manager_ = std::move(file_reference_manager);
   }
 
+  ActorId<GroupCallManager> group_call_manager() const {
+    return group_call_manager_;
+  }
+  void set_group_call_manager(ActorId<GroupCallManager> group_call_manager) {
+    group_call_manager_ = group_call_manager;
+  }
+
   ActorId<LanguagePackManager> language_pack_manager() const {
     return language_pack_manager_;
   }
   void set_language_pack_manager(ActorId<LanguagePackManager> language_pack_manager) {
     language_pack_manager_ = language_pack_manager;
+  }
+
+  ActorId<LinkManager> link_manager() const {
+    return link_manager_;
+  }
+  void set_link_manager(ActorId<LinkManager> link_manager) {
+    link_manager_ = link_manager;
   }
 
   ActorId<MessagesManager> messages_manager() const {
@@ -384,7 +401,9 @@ class Global : public ActorContext {
   ActorId<ContactsManager> contacts_manager_;
   ActorId<FileManager> file_manager_;
   ActorId<FileReferenceManager> file_reference_manager_;
+  ActorId<GroupCallManager> group_call_manager_;
   ActorId<LanguagePackManager> language_pack_manager_;
+  ActorId<LinkManager> link_manager_;
   ActorId<MessagesManager> messages_manager_;
   ActorId<NotificationManager> notification_manager_;
   ActorId<PasswordManager> password_manager_;
@@ -422,7 +441,7 @@ class Global : public ActorContext {
 
   ActorId<StateManager> state_manager_;
 
-  SchedulerLocalStorage<NetQueryCreator> net_query_creator_;
+  LazySchedulerLocalStorage<unique_ptr<NetQueryCreator>> net_query_creator_;
   unique_ptr<NetQueryDispatcher> net_query_dispatcher_;
 
   unique_ptr<ConfigShared> shared_config_;
@@ -449,6 +468,6 @@ inline Global *G_impl(const char *file, int line) {
   return static_cast<Global *>(context);
 }
 
-double get_server_time();
+double get_global_server_time();
 
 }  // namespace td

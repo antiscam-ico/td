@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -37,13 +37,19 @@ class ActorContext {
     return 0;
   }
 
+  void set_tag(string tag) {
+    tag_storage_ = std::move(tag);
+    tag_ = tag_storage_.c_str();
+  }
+
   const char *tag_ = nullptr;
+  string tag_storage_;  // sometimes tag_ == tag_storage_.c_str()
   std::weak_ptr<ActorContext> this_ptr_;
 };
 
-class ActorInfo
+class ActorInfo final
     : private ListNode
-    , HeapNode {
+    , private HeapNode {
  public:
   enum class Deleter : uint8 { Destroy, None };
 

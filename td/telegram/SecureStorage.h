@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -74,21 +74,21 @@ class DataView {
   virtual ~DataView() = default;
 };
 
-class BufferSliceDataView : public DataView {
+class BufferSliceDataView final : public DataView {
  public:
   explicit BufferSliceDataView(BufferSlice buffer_slice);
-  int64 size() const override;
-  Result<BufferSlice> pread(int64 offset, int64 size) const override;
+  int64 size() const final;
+  Result<BufferSlice> pread(int64 offset, int64 size) const final;
 
  private:
   BufferSlice buffer_slice_;
 };
 
-class ConcatDataView : public DataView {
+class ConcatDataView final : public DataView {
  public:
   ConcatDataView(const DataView &left, const DataView &right);
-  int64 size() const override;
-  Result<BufferSlice> pread(int64 offset, int64 size) const override;
+  int64 size() const final;
+  Result<BufferSlice> pread(int64 offset, int64 size) const final;
 
  private:
   const DataView &left_;
@@ -161,11 +161,11 @@ class Decryptor {
 };
 
 // Encryption
-class Encryptor : public DataView {
+class Encryptor final : public DataView {
  public:
   Encryptor(AesCbcState aes_cbc_state, const DataView &data_view);
-  int64 size() const override;
-  Result<BufferSlice> pread(int64 offset, int64 size) const override;
+  int64 size() const final;
+  Result<BufferSlice> pread(int64 offset, int64 size) const final;
 
  private:
   mutable AesCbcState aes_cbc_state_;

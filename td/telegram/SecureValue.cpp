@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -20,6 +20,7 @@
 #include "td/telegram/telegram_api.h"
 #include "td/telegram/telegram_api.hpp"
 
+#include "td/utils/algorithm.h"
 #include "td/utils/base64.h"
 #include "td/utils/buffer.h"
 #include "td/utils/crypto.h"
@@ -27,6 +28,7 @@
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
 #include "td/utils/overloaded.h"
+#include "td/utils/SliceBuilder.h"
 #include "td/utils/utf8.h"
 
 #include <limits>
@@ -433,7 +435,7 @@ static td_api::object_ptr<td_api::datedFile> get_dated_file_object(FileManager *
                                                            file_view.remote_location().get_access_hash(),
                                                            file_view.remote_location().get_dc_id(), ""),
                                     FileLocationSource::FromServer, DialogId(), file_view.size(),
-                                    file_view.expected_size(), file_view.suggested_name());
+                                    file_view.expected_size(), file_view.suggested_path());
   return get_dated_file_object(file_manager, dated_file);
 }
 
@@ -757,7 +759,7 @@ static Status check_gender(string &gender) {
 
 static Result<string> get_personal_details(td_api::object_ptr<td_api::personalDetails> &&personal_details) {
   if (personal_details == nullptr) {
-    return Status::Error(400, "Personal details must not be empty");
+    return Status::Error(400, "Personal details must be non-empty");
   }
   TRY_STATUS(check_name(personal_details->first_name_));
   TRY_STATUS(check_name(personal_details->middle_name_));
@@ -767,7 +769,7 @@ static Result<string> get_personal_details(td_api::object_ptr<td_api::personalDe
   TRY_STATUS(check_name(personal_details->native_last_name_));
   TRY_RESULT(birthdate, get_date(std::move(personal_details->birthdate_)));
   if (birthdate.empty()) {
-    return Status::Error(400, "Birthdate must not be empty");
+    return Status::Error(400, "Birthdate must be non-empty");
   }
   TRY_STATUS(check_gender(personal_details->gender_));
   TRY_STATUS(check_country_code(personal_details->country_code_));
@@ -808,7 +810,7 @@ static Result<td_api::object_ptr<td_api::personalDetails>> get_personal_details_
   TRY_RESULT(native_last_name, get_json_object_string_field(object, "last_name_native", true));
   TRY_RESULT(birthdate, get_json_object_string_field(object, "birth_date", true));
   if (birthdate.empty()) {
-    return Status::Error(400, "Birthdate must not be empty");
+    return Status::Error(400, "Birthdate must be non-empty");
   }
   TRY_RESULT(gender, get_json_object_string_field(object, "gender", true));
   TRY_RESULT(country_code, get_json_object_string_field(object, "country_code", true));
@@ -836,7 +838,7 @@ static Status check_document_number(string &number) {
     return Status::Error(400, "Document number must be encoded in UTF-8");
   }
   if (number.empty()) {
-    return Status::Error(400, "Document number must not be empty");
+    return Status::Error(400, "Document number must be non-empty");
   }
   if (utf8_length(number) > 24) {
     return Status::Error(400, "Document number is too long");
@@ -867,7 +869,7 @@ static Result<SecureValue> get_identity_document(SecureValueType type, FileManag
                                                  td_api::object_ptr<td_api::inputIdentityDocument> &&identity_document,
                                                  bool need_reverse_side) {
   if (identity_document == nullptr) {
-    return Status::Error(400, "Identity document must not be empty");
+    return Status::Error(400, "Identity document must be non-empty");
   }
   TRY_STATUS(check_document_number(identity_document->number_));
   TRY_RESULT(date, get_date(std::move(identity_document->expiry_date_)));
@@ -950,7 +952,7 @@ static Result<SecureValue> get_personal_document(
     SecureValueType type, FileManager *file_manager,
     td_api::object_ptr<td_api::inputPersonalDocument> &&personal_document) {
   if (personal_document == nullptr) {
-    return Status::Error(400, "Personal document must not be empty");
+    return Status::Error(400, "Personal document must be non-empty");
   }
 
   SecureValue res;
@@ -988,7 +990,7 @@ static Status check_email_address(string &email_address) {
 Result<SecureValue> get_secure_value(FileManager *file_manager,
                                      td_api::object_ptr<td_api::InputPassportElement> &&input_passport_element) {
   if (input_passport_element == nullptr) {
-    return Status::Error(400, "InputPassportElement must not be empty");
+    return Status::Error(400, "InputPassportElement must be non-empty");
   }
 
   SecureValue res;

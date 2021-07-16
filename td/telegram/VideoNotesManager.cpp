@@ -1,18 +1,17 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #include "td/telegram/VideoNotesManager.h"
 
+#include "td/telegram/AuthManager.h"
+#include "td/telegram/files/FileManager.h"
 #include "td/telegram/secret_api.h"
+#include "td/telegram/Td.h"
 #include "td/telegram/td_api.h"
 #include "td/telegram/telegram_api.h"
-
-#include "td/telegram/files/FileManager.h"
-#include "td/telegram/SecretChatActor.h"
-#include "td/telegram/Td.h"
 
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
@@ -38,10 +37,10 @@ tl_object_ptr<td_api::videoNote> VideoNotesManager::get_video_note_object(FileId
   CHECK(video_note != nullptr);
   video_note->is_changed = false;
 
-  return make_tl_object<td_api::videoNote>(video_note->duration, video_note->dimensions.width,
-                                           get_minithumbnail_object(video_note->minithumbnail),
-                                           get_photo_size_object(td_->file_manager_.get(), &video_note->thumbnail),
-                                           td_->file_manager_->get_file_object(file_id));
+  return make_tl_object<td_api::videoNote>(
+      video_note->duration, video_note->dimensions.width, get_minithumbnail_object(video_note->minithumbnail),
+      get_thumbnail_object(td_->file_manager_.get(), video_note->thumbnail, PhotoFormat::Jpeg),
+      td_->file_manager_->get_file_object(file_id));
 }
 
 FileId VideoNotesManager::on_get_video_note(unique_ptr<VideoNote> new_video_note, bool replace) {
@@ -112,7 +111,7 @@ FileId VideoNotesManager::dup_video_note(FileId new_id, FileId old_id) {
 
 bool VideoNotesManager::merge_video_notes(FileId new_id, FileId old_id, bool can_delete_old) {
   if (!old_id.is_valid()) {
-    LOG(ERROR) << "Old file id is invalid";
+    LOG(ERROR) << "Old file identifier is invalid";
     return true;
   }
 
@@ -158,14 +157,16 @@ void VideoNotesManager::create_video_note(FileId file_id, string minithumbnail, 
   } else {
     LOG(INFO) << "Receive wrong video note dimensions " << dimensions;
   }
-  v->minithumbnail = std::move(minithumbnail);
+  if (!td_->auth_manager_->is_bot()) {
+    v->minithumbnail = std::move(minithumbnail);
+  }
   v->thumbnail = std::move(thumbnail);
   on_get_video_note(std::move(v), replace);
 }
 
 SecretInputMedia VideoNotesManager::get_secret_input_media(FileId video_note_file_id,
                                                            tl_object_ptr<telegram_api::InputEncryptedFile> input_file,
-                                                           BufferSlice thumbnail, int32 layer) const {
+                                                           BufferSlice thumbnail) const {
   const VideoNote *video_note = get_video_note(video_note_file_id);
   CHECK(video_note != nullptr);
   auto file_view = td_->file_manager_->get_file_view(video_note_file_id);
@@ -182,7 +183,6 @@ SecretInputMedia VideoNotesManager::get_secret_input_media(FileId video_note_fil
   if (video_note->thumbnail.file_id.is_valid() && thumbnail.empty()) {
     return SecretInputMedia{};
   }
-  CHECK(layer >= SecretChatActor::VIDEO_NOTES_LAYER);
   vector<tl_object_ptr<secret_api::DocumentAttribute>> attributes;
   attributes.push_back(make_tl_object<secret_api::documentAttributeVideo66>(
       secret_api::documentAttributeVideo66::ROUND_MESSAGE_MASK, true, video_note->duration,
@@ -203,7 +203,8 @@ tl_object_ptr<telegram_api::InputMedia> VideoNotesManager::get_input_media(
     return nullptr;
   }
   if (file_view.has_remote_location() && !file_view.main_remote_location().is_web() && input_file == nullptr) {
-    return make_tl_object<telegram_api::inputMediaDocument>(0, file_view.main_remote_location().as_input_document(), 0);
+    return make_tl_object<telegram_api::inputMediaDocument>(0, file_view.main_remote_location().as_input_document(), 0,
+                                                            string());
   }
   if (file_view.has_url()) {
     return make_tl_object<telegram_api::inputMediaDocumentExternal>(0, file_view.url(), 0);
@@ -223,8 +224,8 @@ tl_object_ptr<telegram_api::InputMedia> VideoNotesManager::get_input_media(
       flags |= telegram_api::inputMediaUploadedDocument::THUMB_MASK;
     }
     return make_tl_object<telegram_api::inputMediaUploadedDocument>(
-        flags, false /*ignored*/, std::move(input_file), std::move(input_thumbnail), "video/mp4", std::move(attributes),
-        vector<tl_object_ptr<telegram_api::InputDocument>>(), 0);
+        flags, false /*ignored*/, false /*ignored*/, std::move(input_file), std::move(input_thumbnail), "video/mp4",
+        std::move(attributes), vector<tl_object_ptr<telegram_api::InputDocument>>(), 0);
   } else {
     CHECK(!file_view.has_remote_location());
   }

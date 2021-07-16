@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -26,6 +26,7 @@
 #include "td/utils/misc.h"
 #include "td/utils/port/thread.h"
 #include "td/utils/Slice.h"
+#include "td/utils/SliceBuilder.h"
 
 namespace td {
 
@@ -41,7 +42,7 @@ void NetQueryDispatcher::complete_net_query(NetQueryPtr net_query) {
 }
 
 void NetQueryDispatcher::dispatch(NetQueryPtr net_query) {
-  net_query->debug("dispatch");
+  // net_query->debug("dispatch");
   if (stop_flag_.load(std::memory_order_relaxed)) {
     if (net_query->id() != 0) {
       net_query->set_error(Status::Error(500, "Request aborted"));
@@ -72,7 +73,7 @@ void NetQueryDispatcher::dispatch(NetQueryPtr net_query) {
   }
 
   if (!net_query->is_ready()) {
-    if (net_query->dispatch_ttl == 0) {
+    if (net_query->dispatch_ttl_ == 0) {
       net_query->set_error(Status::Error("DispatchTtlError"));
     }
   }
@@ -89,8 +90,8 @@ void NetQueryDispatcher::dispatch(NetQueryPtr net_query) {
     return complete_net_query(std::move(net_query));
   }
 
-  if (net_query->dispatch_ttl > 0) {
-    net_query->dispatch_ttl--;
+  if (net_query->dispatch_ttl_ > 0) {
+    net_query->dispatch_ttl_--;
   }
 
   size_t dc_pos = static_cast<size_t>(dest_dc_id.get_raw_id() - 1);
@@ -227,7 +228,7 @@ void NetQueryDispatcher::update_session_count() {
 }
 void NetQueryDispatcher::destroy_auth_keys(Promise<> promise) {
   std::lock_guard<std::mutex> guard(main_dc_id_mutex_);
-  LOG(INFO) << "Destory auth keys";
+  LOG(INFO) << "Destroy auth keys";
   need_destroy_auth_key_ = true;
   for (size_t i = 1; i < MAX_DC_COUNT; i++) {
     if (is_dc_inited(narrow_cast<int32>(i)) && dcs_[i - 1].id_.is_internal()) {
@@ -271,7 +272,7 @@ bool NetQueryDispatcher::is_dc_inited(int32 raw_dc_id) {
   return dcs_[raw_dc_id - 1].is_valid_.load(std::memory_order_relaxed);
 }
 int32 NetQueryDispatcher::get_session_count() {
-  return max(G()->shared_config().get_option_integer("session_count"), 1);
+  return max(narrow_cast<int32>(G()->shared_config().get_option_integer("session_count")), 1);
 }
 
 bool NetQueryDispatcher::get_use_pfs() {

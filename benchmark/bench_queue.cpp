@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -562,7 +562,7 @@ class SemCheatQueue {
 };
 
 template <class QueueT>
-class QueueBenchmark2 : public td::Benchmark {
+class QueueBenchmark2 final : public td::Benchmark {
   QueueT client, server;
   int connections_n, queries_n;
 
@@ -575,16 +575,16 @@ class QueueBenchmark2 : public td::Benchmark {
   explicit QueueBenchmark2(int connections_n = 1) : connections_n(connections_n) {
   }
 
-  std::string get_description() const override {
+  std::string get_description() const final {
     return "QueueBenchmark2";
   }
 
-  void start_up() override {
+  void start_up() final {
     client.init();
     server.init();
   }
 
-  void tear_down() override {
+  void tear_down() final {
     client.destroy();
     server.destroy();
   }
@@ -689,7 +689,7 @@ class QueueBenchmark2 : public td::Benchmark {
     return static_cast<QueueBenchmark2 *>(arg)->server_run(nullptr);
   }
 
-  void run(int n) override {
+  void run(int n) final {
     pthread_t client_thread_id;
     pthread_t server_thread_id;
 
@@ -704,7 +704,7 @@ class QueueBenchmark2 : public td::Benchmark {
 };
 
 template <class QueueT>
-class QueueBenchmark : public td::Benchmark {
+class QueueBenchmark final : public td::Benchmark {
   QueueT client, server;
   const int connections_n;
   int queries_n;
@@ -713,16 +713,16 @@ class QueueBenchmark : public td::Benchmark {
   explicit QueueBenchmark(int connections_n = 1) : connections_n(connections_n) {
   }
 
-  std::string get_description() const override {
+  std::string get_description() const final {
     return "QueueBenchmark";
   }
 
-  void start_up() override {
+  void start_up() final {
     client.init();
     server.init();
   }
 
-  void tear_down() override {
+  void tear_down() final {
     client.destroy();
     server.destroy();
   }
@@ -821,7 +821,7 @@ class QueueBenchmark : public td::Benchmark {
     return static_cast<QueueBenchmark *>(arg)->server_run(nullptr);
   }
 
-  void run(int n) override {
+  void run(int n) final {
     pthread_t client_thread_id;
     pthread_t server_thread_id;
 
@@ -836,8 +836,8 @@ class QueueBenchmark : public td::Benchmark {
 };
 
 template <class QueueT>
-class RingBenchmark : public td::Benchmark {
-  enum { QN = 504 };
+class RingBenchmark final : public td::Benchmark {
+  static constexpr int QN = 504;
 
   struct Thread {
     int int_id;
@@ -869,7 +869,7 @@ class RingBenchmark : public td::Benchmark {
     return static_cast<Thread *>(arg)->run();
   }
 
-  void start_up() override {
+  void start_up() final {
     for (int i = 0; i < QN; i++) {
       q[i].int_id = i;
       q[i].queue.init();
@@ -877,13 +877,13 @@ class RingBenchmark : public td::Benchmark {
     }
   }
 
-  void tear_down() override {
+  void tear_down() final {
     for (int i = 0; i < QN; i++) {
       q[i].queue.destroy();
     }
   }
 
-  void run(int n) override {
+  void run(int n) final {
     for (int i = 0; i < QN; i++) {
       pthread_create(&q[i].id, nullptr, run_gateway, &q[i]);
     }
@@ -903,12 +903,12 @@ class RingBenchmark : public td::Benchmark {
 
 void test_queue() {
   std::vector<td::thread> threads;
-  constexpr size_t threads_n = 100;
-  std::vector<td::MpscPollableQueue<int>> queues(threads_n);
+  static constexpr size_t THREAD_COUNT = 100;
+  std::vector<td::MpscPollableQueue<int>> queues(THREAD_COUNT);
   for (auto &q : queues) {
     q.init();
   }
-  for (size_t i = 0; i < threads_n; i++) {
+  for (size_t i = 0; i < THREAD_COUNT; i++) {
     threads.emplace_back([&q = queues[i]] {
       while (true) {
         auto got = q.reader_wait_nonblock();
@@ -923,7 +923,7 @@ void test_queue() {
   while (true) {
     td::usleep_for(100);
     for (int i = 0; i < 5; i++) {
-      queues[td::Random::fast(0, threads_n - 1)].writer_put(1);
+      queues[td::Random::fast(0, THREAD_COUNT - 1)].writer_put(1);
     }
   }
 }
@@ -974,6 +974,4 @@ int main() {
   // BENCH_Q(BufferQueue, 100);
   // BENCH_Q(BufferQueue, 10);
   // BENCH_Q(BufferQueue, 1);
-
-  return 0;
 }

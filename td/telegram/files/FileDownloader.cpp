@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -27,6 +27,7 @@
 #include "td/utils/port/path.h"
 #include "td/utils/port/Stat.h"
 #include "td/utils/ScopeGuard.h"
+#include "td/utils/SliceBuilder.h"
 #include "td/utils/UInt.h"
 
 #include <tuple>
@@ -108,11 +109,12 @@ Result<FileLoader::FileInfo> FileDownloader::init() {
   res.ready_parts = bitmask.as_vector();
   res.use_part_count_limit = false;
   res.only_check = only_check_;
+  auto file_type = remote_.file_type_;
   res.need_delay =
-      !is_small_ && (remote_.file_type_ == FileType::VideoNote || remote_.file_type_ == FileType::Document ||
-                     remote_.file_type_ == FileType::VoiceNote || remote_.file_type_ == FileType::Audio ||
-                     remote_.file_type_ == FileType::Video || remote_.file_type_ == FileType::Animation ||
-                     (remote_.file_type_ == FileType::Encrypted && size_ > (1 << 20)));
+      !is_small_ &&
+      (file_type == FileType::VideoNote || file_type == FileType::Document || file_type == FileType::DocumentAsFile ||
+       file_type == FileType::VoiceNote || file_type == FileType::Audio || file_type == FileType::Video ||
+       file_type == FileType::Animation || (file_type == FileType::Encrypted && size_ > (1 << 20)));
   res.offset = offset_;
   res.limit = limit_;
   return res;
@@ -366,7 +368,7 @@ Result<size_t> FileDownloader::process_part(Part part, NetQueryPtr net_query) {
                     bytes.as_slice());
   }
 
-  auto slice = bytes.as_slice().truncate(part.size);
+  auto slice = bytes.as_slice().substr(0, part.size);
   TRY_STATUS(acquire_fd());
   LOG(INFO) << "Got " << slice.size() << " bytes at offset " << part.offset << " for \"" << path_ << '"';
   TRY_RESULT(written, fd_.pwrite(slice, part.offset));

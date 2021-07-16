@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -12,7 +12,7 @@
 #include "td/utils/common.h"
 #include "td/utils/filesystem.h"
 #include "td/utils/format.h"
-#include "td/utils/logging.h"
+#include "td/utils/SliceBuilder.h"
 
 namespace td {
 
@@ -142,7 +142,7 @@ void FileLoadManager::cancel(QueryId id) {
   if (it == query_id_to_node_id_.end()) {
     return;
   }
-  on_error_impl(it->second, Status::Error(1, "Cancelled"));
+  on_error_impl(it->second, Status::Error(1, "Canceled"));
 }
 void FileLoadManager::update_local_file_location(QueryId id, const LocalFileLocation &local) {
   if (stop_flag_) {
@@ -158,7 +158,8 @@ void FileLoadManager::update_local_file_location(QueryId id, const LocalFileLoca
   }
   send_closure(node->loader_, &FileLoaderActor::update_local_file_location, local);
 }
-void FileLoadManager::update_download_offset(QueryId id, int64 offset) {
+
+void FileLoadManager::update_downloaded_part(QueryId id, int64 offset, int64 limit) {
   if (stop_flag_) {
     return;
   }
@@ -170,22 +171,9 @@ void FileLoadManager::update_download_offset(QueryId id, int64 offset) {
   if (node == nullptr) {
     return;
   }
-  send_closure(node->loader_, &FileLoaderActor::update_download_offset, offset);
+  send_closure(node->loader_, &FileLoaderActor::update_downloaded_part, offset, limit);
 }
-void FileLoadManager::update_download_limit(QueryId id, int64 limit) {
-  if (stop_flag_) {
-    return;
-  }
-  auto it = query_id_to_node_id_.find(id);
-  if (it == query_id_to_node_id_.end()) {
-    return;
-  }
-  auto node = nodes_container_.get(it->second);
-  if (node == nullptr) {
-    return;
-  }
-  send_closure(node->loader_, &FileLoaderActor::update_download_limit, limit);
-}
+
 void FileLoadManager::hangup() {
   nodes_container_.for_each([](auto id, auto &node) { node.loader_.reset(); });
   stop_flag_ = true;
@@ -295,7 +283,7 @@ void FileLoadManager::on_error_impl(NodeId node_id, Status status) {
 
 void FileLoadManager::hangup_shared() {
   auto node_id = get_link_token();
-  on_error_impl(node_id, Status::Error(1, "Cancelled"));
+  on_error_impl(node_id, Status::Error(1, "Canceled"));
 }
 
 void FileLoadManager::loop() {

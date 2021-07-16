@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -18,7 +18,7 @@ namespace td {
 
 Result<std::wstring> to_wstring(CSlice slice) {
   if (!check_utf8(slice)) {
-    return Status::Error("Wrong encoding");
+    return Status::Error("Wrong string encoding");
   }
 
   size_t wstring_len = utf8_utf16_length(slice);
@@ -65,7 +65,7 @@ Result<string> from_wstring(const wchar_t *begin, size_t size) {
         }
       }
 
-      return Status::Error("Wrong encoding");
+      return Status::Error("Wrong wstring encoding");
     }
     result_len += 1 + (cur >= 0x80) + (cur >= 0x800);
   }

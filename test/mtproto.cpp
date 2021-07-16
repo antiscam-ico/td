@@ -1,16 +1,17 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
-#include "td/utils/tests.h"
-
-#include "td/actor/actor.h"
-#include "td/actor/PromiseFuture.h"
+#include "td/telegram/ConfigManager.h"
+#include "td/telegram/net/DcId.h"
+#include "td/telegram/net/PublicRsaKeyShared.h"
+#include "td/telegram/net/Session.h"
+#include "td/telegram/NotificationManager.h"
 
 #include "td/mtproto/AuthData.h"
-#include "td/mtproto/crypto.h"
+#include "td/mtproto/DhCallback.h"
 #include "td/mtproto/DhHandshake.h"
 #include "td/mtproto/Handshake.h"
 #include "td/mtproto/HandshakeActor.h"
@@ -18,6 +19,7 @@
 #include "td/mtproto/PingConnection.h"
 #include "td/mtproto/ProxySecret.h"
 #include "td/mtproto/RawConnection.h"
+#include "td/mtproto/RSA.h"
 #include "td/mtproto/TlsInit.h"
 #include "td/mtproto/TransportType.h"
 
@@ -25,23 +27,23 @@
 #include "td/net/Socks5.h"
 #include "td/net/TransparentProxy.h"
 
-#include "td/telegram/ConfigManager.h"
-#include "td/telegram/net/DcId.h"
-#include "td/telegram/net/PublicRsaKeyShared.h"
-#include "td/telegram/net/Session.h"
-#include "td/telegram/NotificationManager.h"
+#include "td/actor/actor.h"
+#include "td/actor/ConcurrentScheduler.h"
+#include "td/actor/PromiseFuture.h"
 
 #include "td/utils/base64.h"
 #include "td/utils/common.h"
+#include "td/utils/crypto.h"
 #include "td/utils/logging.h"
 #include "td/utils/port/Clocks.h"
 #include "td/utils/port/IPAddress.h"
 #include "td/utils/port/SocketFd.h"
 #include "td/utils/Random.h"
+#include "td/utils/Slice.h"
+#include "td/utils/SliceBuilder.h"
 #include "td/utils/Status.h"
+#include "td/utils/tests.h"
 #include "td/utils/Time.h"
-
-REGISTER_TESTS(mtproto);
 
 using namespace td;
 
@@ -72,7 +74,7 @@ TEST(Mtproto, GetHostByNameActor) {
         }
       });
       cnt++;
-      send_closure(actor_id, &GetHostByNameActor::run, host, 443, prefer_ipv6, std::move(promise));
+      send_closure_later(actor_id, &GetHostByNameActor::run, host, 443, prefer_ipv6, std::move(promise));
     };
 
     std::vector<std::string> hosts = {"127.0.0.2",
@@ -86,10 +88,13 @@ TEST(Mtproto, GetHostByNameActor) {
                                       " ",
                                       "a",
                                       "\x80",
+                                      "[]",
                                       "127.0.0.1.",
                                       "0x12.0x34.0x56.0x78",
                                       "0x7f.001",
-                                      "2001:0db8:85a3:0000:0000:8a2e:0370:7334"};
+                                      "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+                                      "[2001:0db8:85a3:0000:0000:8a2e:0370:7334]",
+                                      "[[2001:0db8:85a3:0000:0000:8a2e:0370:7334]]"};
     for (auto types : {vector<GetHostByNameActor::ResolverType>{GetHostByNameActor::ResolverType::Native},
                        vector<GetHostByNameActor::ResolverType>{GetHostByNameActor::ResolverType::Google},
                        vector<GetHostByNameActor::ResolverType>{GetHostByNameActor::ResolverType::Google,
@@ -105,7 +110,7 @@ TEST(Mtproto, GetHostByNameActor) {
 
       for (auto host : hosts) {
         for (auto prefer_ipv6 : {false, true}) {
-          bool allow_ok = host.size() > 2;
+          bool allow_ok = host.size() > 2 && host[1] != '[';
           bool allow_both = host == "127.0.0.1." || host == "localhost" || (host == "москва.рф" && prefer_ipv6);
           bool allow_error = !allow_ok || allow_both;
           run(actor_id, host, prefer_ipv6, allow_ok, allow_error);
@@ -175,11 +180,13 @@ TEST(Mtproto, config) {
     run(get_simple_config_firebase_firestore, false);
   }
   cnt--;
-  sched.start();
-  while (sched.run_main(10)) {
-    // empty;
+  if (cnt != 0) {
+    sched.start();
+    while (sched.run_main(10)) {
+      // empty;
+    }
+    sched.finish();
   }
-  sched.finish();
 }
 
 TEST(Mtproto, encrypted_config) {
@@ -191,7 +198,7 @@ TEST(Mtproto, encrypted_config) {
   auto config = decode_config(data).move_as_ok();
 }
 
-class TestPingActor : public Actor {
+class TestPingActor final : public Actor {
  public:
   TestPingActor(IPAddress ip_address, Status *result) : ip_address_(ip_address), result_(result) {
   }
@@ -200,24 +207,34 @@ class TestPingActor : public Actor {
   IPAddress ip_address_;
   unique_ptr<mtproto::PingConnection> ping_connection_;
   Status *result_;
+  bool is_inited_ = false;
 
-  void start_up() override {
+  void start_up() final {
+    auto r_socket = SocketFd::open(ip_address_);
+    if (r_socket.is_error()) {
+      LOG(ERROR) << "Failed to open socket: " << r_socket.error();
+      return stop();
+    }
+
     ping_connection_ = mtproto::PingConnection::create_req_pq(
-        make_unique<mtproto::RawConnection>(
-            SocketFd::open(ip_address_).move_as_ok(),
-            mtproto::TransportType{mtproto::TransportType::Tcp, 0, mtproto::ProxySecret()}, nullptr),
+        mtproto::RawConnection::create(ip_address_, r_socket.move_as_ok(),
+                                       mtproto::TransportType{mtproto::TransportType::Tcp, 0, mtproto::ProxySecret()},
+                                       nullptr),
         3);
 
     Scheduler::subscribe(ping_connection_->get_poll_info().extract_pollable_fd(this));
+    is_inited_ = true;
     set_timeout_in(10);
     yield();
   }
-  void tear_down() override {
-    Scheduler::unsubscribe_before_close(ping_connection_->get_poll_info().get_pollable_fd_ref());
+  void tear_down() final {
+    if (is_inited_) {
+      Scheduler::unsubscribe_before_close(ping_connection_->get_poll_info().get_pollable_fd_ref());
+    }
     Scheduler::instance()->finish();
   }
 
-  void loop() override {
+  void loop() final {
     auto status = ping_connection_->flush();
     if (status.is_error()) {
       *result_ = std::move(status);
@@ -229,7 +246,7 @@ class TestPingActor : public Actor {
     }
   }
 
-  void timeout_expired() override {
+  void timeout_expired() final {
     *result_ = Status::Error("Timeout expired");
     stop();
   }
@@ -249,7 +266,7 @@ static int32 get_default_dc_id() {
   return 10002;
 }
 
-class Mtproto_ping : public Test {
+class Mtproto_ping final : public Test {
  public:
   using Test::Test;
   bool step() final {
@@ -278,12 +295,12 @@ class Mtproto_ping : public Test {
 };
 RegisterTest<Mtproto_ping> mtproto_ping("Mtproto_ping");
 
-class HandshakeContext : public mtproto::AuthKeyHandshakeContext {
+class HandshakeContext final : public mtproto::AuthKeyHandshakeContext {
  public:
-  DhCallback *get_dh_callback() override {
+  mtproto::DhCallback *get_dh_callback() final {
     return nullptr;
   }
-  PublicRsaKeyInterface *get_public_rsa_key_interface() override {
+  mtproto::PublicRsaKeyInterface *get_public_rsa_key_interface() final {
     return &public_rsa_key;
   }
 
@@ -291,7 +308,7 @@ class HandshakeContext : public mtproto::AuthKeyHandshakeContext {
   PublicRsaKeyShared public_rsa_key{DcId::empty(), false};
 };
 
-class HandshakeTestActor : public Actor {
+class HandshakeTestActor final : public Actor {
  public:
   HandshakeTestActor(int32 dc_id, Status *result) : dc_id_(dc_id), result_(result) {
   }
@@ -306,16 +323,23 @@ class HandshakeTestActor : public Actor {
   Status status_;
   bool wait_for_result_ = false;
 
-  void tear_down() override {
+  void tear_down() final {
     if (raw_connection_) {
       raw_connection_->close();
     }
     finish(Status::Error("Interrupted"));
   }
-  void loop() override {
+  void loop() final {
     if (!wait_for_raw_connection_ && !raw_connection_) {
-      raw_connection_ = make_unique<mtproto::RawConnection>(
-          SocketFd::open(get_default_ip_address()).move_as_ok(),
+      auto ip_address = get_default_ip_address();
+      auto r_socket = SocketFd::open(ip_address);
+      if (r_socket.is_error()) {
+        finish(Status::Error(PSTRING() << "Failed to open socket: " << r_socket.error()));
+        return stop();
+      }
+
+      raw_connection_ = mtproto::RawConnection::create(
+          ip_address, r_socket.move_as_ok(),
           mtproto::TransportType{mtproto::TransportType::Tcp, 0, mtproto::ProxySecret()}, nullptr);
     }
     if (!wait_for_handshake_ && !handshake_) {
@@ -382,7 +406,7 @@ class HandshakeTestActor : public Actor {
   }
 };
 
-class Mtproto_handshake : public Test {
+class Mtproto_handshake final : public Test {
  public:
   using Test::Test;
   bool step() final {
@@ -411,21 +435,21 @@ class Mtproto_handshake : public Test {
 };
 RegisterTest<Mtproto_handshake> mtproto_handshake("Mtproto_handshake");
 
-class Socks5TestActor : public Actor {
+class Socks5TestActor final : public Actor {
  public:
-  void start_up() override {
+  void start_up() final {
     auto promise = PromiseCreator::lambda([actor_id = actor_id(this)](Result<SocketFd> res) {
       send_closure(actor_id, &Socks5TestActor::on_result, std::move(res), false);
     });
 
-    class Callback : public TransparentProxy::Callback {
+    class Callback final : public TransparentProxy::Callback {
      public:
       explicit Callback(Promise<SocketFd> promise) : promise_(std::move(promise)) {
       }
-      void set_result(Result<SocketFd> result) override {
+      void set_result(Result<SocketFd> result) final {
         promise_.set_result(std::move(result));
       }
-      void on_connected() override {
+      void on_connected() final {
       }
 
      private:
@@ -434,11 +458,14 @@ class Socks5TestActor : public Actor {
 
     IPAddress socks5_ip;
     socks5_ip.init_ipv4_port("131.191.89.104", 43077).ensure();
-    IPAddress mtproto_ip = get_default_ip_address();
+    IPAddress mtproto_ip_address = get_default_ip_address();
 
     auto r_socket = SocketFd::open(socks5_ip);
-    create_actor<Socks5>("socks5", r_socket.move_as_ok(), mtproto_ip, "", "", make_unique<Callback>(std::move(promise)),
-                         actor_shared())
+    if (r_socket.is_error()) {
+      return promise.set_error(Status::Error(PSTRING() << "Failed to open socket: " << r_socket.error()));
+    }
+    create_actor<Socks5>("socks5", r_socket.move_as_ok(), mtproto_ip_address, "", "",
+                         make_unique<Callback>(std::move(promise)), actor_shared(this))
         .release();
   }
 
@@ -490,13 +517,13 @@ TEST(Mtproto, notifications) {
     auto push = base64url_decode(pushes[i]).move_as_ok();
     auto decrypted_payload = base64url_decode(decrypted_payloads[i]).move_as_ok();
 
-    auto key_id = DhHandshake::calc_key_id(key);
+    auto key_id = mtproto::DhHandshake::calc_key_id(key);
     ASSERT_EQ(key_id, NotificationManager::get_push_receiver_id(push).ok());
     ASSERT_EQ(decrypted_payload, NotificationManager::decrypt_push(key_id, key, push).ok());
   }
 }
 
-class FastPingTestActor : public Actor {
+class FastPingTestActor final : public Actor {
  public:
   explicit FastPingTestActor(Status *result) : result_(result) {
   }
@@ -508,10 +535,17 @@ class FastPingTestActor : public Actor {
   ActorOwn<> fast_ping_;
   int iteration_{0};
 
-  void start_up() override {
+  void start_up() final {
     // Run handshake to create key and salt
-    auto raw_connection = make_unique<mtproto::RawConnection>(
-        SocketFd::open(get_default_ip_address()).move_as_ok(),
+    auto ip_address = get_default_ip_address();
+    auto r_socket = SocketFd::open(ip_address);
+    if (r_socket.is_error()) {
+      *result_ = Status::Error(PSTRING() << "Failed to open socket: " << r_socket.error());
+      return stop();
+    }
+
+    auto raw_connection = mtproto::RawConnection::create(
+        ip_address, r_socket.move_as_ok(),
         mtproto::TransportType{mtproto::TransportType::Tcp, 0, mtproto::ProxySecret()}, nullptr);
     auto handshake = make_unique<mtproto::AuthKeyHandshake>(get_default_dc_id(), 60 * 100 /*temp*/);
     create_actor<mtproto::HandshakeActor>(
@@ -551,12 +585,12 @@ class FastPingTestActor : public Actor {
       return stop();
     }
     connection_ = r_connection.move_as_ok();
-    LOG(INFO) << "RTT: " << connection_->rtt_;
-    connection_->rtt_ = 0;
+    LOG(INFO) << "RTT: " << connection_->extra().rtt;
+    connection_->extra().rtt = 0;
     loop();
   }
 
-  void loop() override {
+  void loop() final {
     if (handshake_ && connection_) {
       LOG(INFO) << "Iteration " << iteration_;
       if (iteration_ == 6) {
@@ -586,12 +620,12 @@ class FastPingTestActor : public Actor {
     }
   }
 
-  void tear_down() override {
+  void tear_down() final {
     Scheduler::instance()->finish();
   }
 };
 
-class Mtproto_FastPing : public Test {
+class Mtproto_FastPing final : public Test {
  public:
   using Test::Test;
   bool step() final {
@@ -638,15 +672,19 @@ TEST(Mtproto, TlsTransport) {
   sched.init(threads_n);
   {
     auto guard = sched.get_main_guard();
-    class RunTest : public Actor {
-      void start_up() override {
-        class Callback : public TransparentProxy::Callback {
+    class RunTest final : public Actor {
+      void start_up() final {
+        class Callback final : public TransparentProxy::Callback {
          public:
-          void set_result(Result<SocketFd> result) override {
-            CHECK(result.is_error() && result.error().message() == "Response hash mismatch");
+          void set_result(Result<SocketFd> result) final {
+            if (result.is_ok()) {
+              LOG(ERROR) << "Unexpectedly succeeded to connect to MTProto proxy";
+            } else if (result.error().message() != "Response hash mismatch") {
+              LOG(ERROR) << "Receive unexpected result " << result.error();
+            }
             Scheduler::instance()->finish();
           }
-          void on_connected() override {
+          void on_connected() final {
           }
         };
 
@@ -658,9 +696,14 @@ TEST(Mtproto, TlsTransport) {
           Scheduler::instance()->finish();
           return;
         }
-        SocketFd fd = SocketFd::open(ip_address).move_as_ok();
-        create_actor<mtproto::TlsInit>("TlsInit", std::move(fd), domain, "0123456789secret", make_unique<Callback>(),
-                                       ActorShared<>(), Clocks::system() - Time::now())
+        auto r_socket = SocketFd::open(ip_address);
+        if (r_socket.is_error()) {
+          LOG(ERROR) << "Failed to open socket: " << r_socket.error();
+          Scheduler::instance()->finish();
+          return;
+        }
+        create_actor<mtproto::TlsInit>("TlsInit", r_socket.move_as_ok(), domain, "0123456789secret",
+                                       make_unique<Callback>(), ActorShared<>(), Clocks::system() - Time::now())
             .release();
       }
     };
@@ -672,4 +715,23 @@ TEST(Mtproto, TlsTransport) {
     // empty
   }
   sched.finish();
+}
+
+TEST(Mtproto, RSA) {
+  auto pem = td::Slice(
+      "-----BEGIN RSA PUBLIC KEY-----\n"
+      "MIIBCgKCAQEAr4v4wxMDXIaMOh8bayF/NyoYdpcysn5EbjTIOZC0RkgzsRj3SGlu\n"
+      "52QSz+ysO41dQAjpFLgxPVJoOlxXokaOq827IfW0bGCm0doT5hxtedu9UCQKbE8j\n"
+      "lDOk+kWMXHPZFJKWRgKgTu9hcB3y3Vk+JFfLpq3d5ZB48B4bcwrRQnzkx5GhWOFX\n"
+      "x73ZgjO93eoQ2b/lDyXxK4B4IS+hZhjzezPZTI5upTRbs5ljlApsddsHrKk6jJNj\n"
+      "8Ygs/ps8e6ct82jLXbnndC9s8HjEvDvBPH9IPjv5JUlmHMBFZ5vFQIfbpo0u0+1P\n"
+      "n6bkEi5o7/ifoyVv2pAZTRwppTz0EuXD8QIDAQAB\n"
+      "-----END RSA PUBLIC KEY-----");
+  auto rsa = td::mtproto::RSA::from_pem_public_key(pem).move_as_ok();
+  ASSERT_EQ(-7596991558377038078, rsa.get_fingerprint());
+  ASSERT_EQ(256u, rsa.size());
+
+  td::string to(256, '\0');
+  rsa.encrypt(pem.substr(0, 256), to);
+  ASSERT_EQ("U2nJEtB2AgpHrm3HB0yhpTQgb0wbesi9Pv/W1v/vULU=", td::base64_encode(td::sha256(to)));
 }

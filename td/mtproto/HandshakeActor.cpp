@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -9,7 +9,7 @@
 #include "td/mtproto/HandshakeConnection.h"
 
 #include "td/utils/common.h"
-#include "td/utils/logging.h"
+#include "td/utils/SliceBuilder.h"
 #include "td/utils/Status.h"
 
 namespace td {
@@ -27,7 +27,7 @@ HandshakeActor::HandshakeActor(unique_ptr<AuthKeyHandshake> handshake, unique_pt
 }
 
 void HandshakeActor::close() {
-  finish(Status::Error("Cancelled"));
+  finish(Status::Error("Canceled"));
   stop();
 }
 
@@ -55,8 +55,8 @@ void HandshakeActor::return_connection(Status status) {
     CHECK(!raw_connection_promise_);
     return;
   }
-  if (status.is_error() && !raw_connection->debug_str_.empty()) {
-    status = Status::Error(status.code(), PSLICE() << status.message() << " : " << raw_connection->debug_str_);
+  if (status.is_error() && !raw_connection->extra().debug_str.empty()) {
+    status = status.move_as_error_suffix(PSLICE() << " : " << raw_connection->extra().debug_str);
   }
   Scheduler::unsubscribe(raw_connection->get_poll_info().get_pollable_fd_ref());
   if (raw_connection_promise_) {

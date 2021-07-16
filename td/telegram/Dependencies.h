@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -28,6 +28,12 @@ struct Dependencies {
   std::unordered_set<WebPageId, WebPageIdHash> web_page_ids;
 };
 
-void resolve_dependencies_force(Td *td, const Dependencies &dependencies);
+void add_dialog_and_dependencies(Dependencies &dependencies, DialogId dialog_id);
+
+void add_dialog_dependencies(Dependencies &dependencies, DialogId dialog_id);
+
+void add_message_sender_dependencies(Dependencies &dependencies, DialogId dialog_id);
+
+bool resolve_dependencies_force(Td *td, const Dependencies &dependencies, const char *source);
 
 }  // namespace td

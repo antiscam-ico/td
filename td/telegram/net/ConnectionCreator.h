@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -7,7 +7,6 @@
 #pragma once
 
 #include "td/telegram/td_api.h"
-#include "td/telegram/telegram_api.h"
 
 #include "td/telegram/net/DcId.h"
 #include "td/telegram/net/DcOptions.h"
@@ -55,12 +54,12 @@ namespace td {
 
 extern int VERBOSITY_NAME(connections);
 
-class ConnectionCreator : public NetQueryCallback {
+class ConnectionCreator final : public NetQueryCallback {
  public:
   explicit ConnectionCreator(ActorShared<> parent);
   ConnectionCreator(ConnectionCreator &&other);
   ConnectionCreator &operator=(ConnectionCreator &&other);
-  ~ConnectionCreator() override;
+  ~ConnectionCreator() final;
 
   void on_dc_options(DcOptions new_dc_options);
   void on_dc_update(DcId dc_id, string ip_port, Promise<> promise);
@@ -85,6 +84,7 @@ class ConnectionCreator : public NetQueryCallback {
   void ping_proxy(int32 proxy_id, Promise<double> promise);
 
   struct ConnectionData {
+    IPAddress ip_address;
     SocketFd socket_fd;
     StateManager::ConnectionToken connection_token;
     unique_ptr<mtproto::RawConnection::StatsCallback> stats_callback;
@@ -92,8 +92,9 @@ class ConnectionCreator : public NetQueryCallback {
 
   static DcOptions get_default_dc_options(bool is_test);
 
-  static ActorOwn<> prepare_connection(SocketFd socket_fd, const Proxy &proxy, const IPAddress &mtproto_ip,
-                                       mtproto::TransportType transport_type, Slice actor_name_prefix, Slice debug_str,
+  static ActorOwn<> prepare_connection(IPAddress ip_address, SocketFd socket_fd, const Proxy &proxy,
+                                       const IPAddress &mtproto_ip_address, mtproto::TransportType transport_type,
+                                       Slice actor_name_prefix, Slice debug_str,
                                        unique_ptr<mtproto::RawConnection::StatsCallback> stats_callback,
                                        ActorShared<> parent, bool use_connection_token,
                                        Promise<ConnectionData> promise);
@@ -104,6 +105,7 @@ class ConnectionCreator : public NetQueryCallback {
   bool network_flag_ = false;
   uint32 network_generation_ = 0;
   bool online_flag_ = false;
+  bool is_logging_out_ = false;
   bool is_inited_ = false;
 
   static constexpr int32 MAX_PROXY_LAST_USED_SAVE_DELAY = 60;
@@ -117,9 +119,6 @@ class ConnectionCreator : public NetQueryCallback {
   IPAddress proxy_ip_address_;
   Timestamp resolve_proxy_timestamp_;
   uint64 resolve_proxy_query_token_{0};
-
-  uint64 get_proxy_info_query_token_{0};
-  Timestamp get_proxy_info_timestamp_;
 
   struct ClientInfo {
     class Backoff {
@@ -150,6 +149,7 @@ class ConnectionCreator : public NetQueryCallback {
     void add_session_id(int64 session_id);
 
     Backoff backoff;
+    FloodControlStrict sanity_flood_control;
     FloodControlStrict flood_control;
     FloodControlStrict flood_control_online;
     FloodControlStrict mtproto_error_flood_control;
@@ -202,12 +202,10 @@ class ConnectionCreator : public NetQueryCallback {
   void save_proxy_last_used_date(int32 delay);
   td_api::object_ptr<td_api::proxy> get_proxy_object(int32 proxy_id) const;
 
-  void start_up() override;
-  void hangup_shared() override;
-  void hangup() override;
-  void loop() override;
-
-  void on_result(NetQueryPtr query) override;
+  void start_up() final;
+  void hangup_shared() final;
+  void hangup() final;
+  void loop() final;
 
   void save_dc_options();
   Result<SocketFd> do_request_connection(DcId dc_id, bool allow_media_only);
@@ -217,6 +215,7 @@ class ConnectionCreator : public NetQueryCallback {
 
   void on_network(bool network_flag, uint32 network_generation);
   void on_online(bool online_flag);
+  void on_logging_out(bool is_logging_out);
 
   static void update_mtproto_header(const Proxy &proxy);
 
@@ -229,17 +228,14 @@ class ConnectionCreator : public NetQueryCallback {
                              uint64 auth_data_generation, int64 session_id);
   void client_set_timeout_at(ClientInfo &client, double wakeup_at);
 
-  void on_get_proxy_info(telegram_api::object_ptr<telegram_api::help_ProxyData> proxy_data_ptr);
-
-  void schedule_get_proxy_info(int32 expires);
-
   void on_proxy_resolved(Result<IPAddress> ip_address, bool dummy);
 
   struct FindConnectionExtra {
     DcOptionsSet::Stat *stat{nullptr};
     mtproto::TransportType transport_type;
     string debug_str;
-    IPAddress mtproto_ip;
+    IPAddress ip_address;
+    IPAddress mtproto_ip_address;
     bool check_mode{false};
   };
 
@@ -253,7 +249,8 @@ class ConnectionCreator : public NetQueryCallback {
 
   void ping_proxy_resolved(int32 proxy_id, IPAddress ip_address, Promise<double> promise);
 
-  void ping_proxy_socket_fd(SocketFd socket_fd, mtproto::TransportType transport_type, Promise<double> promise);
+  void ping_proxy_socket_fd(IPAddress ip_address, SocketFd socket_fd, mtproto::TransportType transport_type,
+                            string debug_str, Promise<double> promise);
 
   void on_ping_main_dc_result(uint64 token, Result<double> result);
 };

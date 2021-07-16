@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -25,9 +25,11 @@
 #include "td/utils/List.h"
 #include "td/utils/Status.h"
 #include "td/utils/StringBuilder.h"
+#include "td/utils/VectorQueue.h"
 
 #include <array>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <unordered_map>
@@ -74,7 +76,7 @@ class Session final
   void close();
 
  private:
-  struct Query : private ListNode {
+  struct Query final : private ListNode {
     uint64 container_id;
     NetQueryPtr query;
 
@@ -117,6 +119,7 @@ class Session final
   uint64 last_bind_query_id_ = 0;
   uint64 last_check_query_id_ = 0;
   double last_activity_timestamp_ = 0;
+  double last_success_timestamp_ = 0;  // time when auth_key and Session definitely was valid
   size_t dropped_size_ = 0;
 
   std::unordered_set<uint64> unknown_queries_;
@@ -124,7 +127,15 @@ class Session final
 
   // Do not invalidate iterators of these two containers!
   // TODO: better data structures
-  std::deque<NetQueryPtr> pending_queries_;
+  struct PriorityQueue {
+    void push(NetQueryPtr query);
+    NetQueryPtr pop();
+    bool empty() const;
+
+   private:
+    std::map<int8, VectorQueue<NetQueryPtr>, std::greater<>> queries_;
+  };
+  PriorityQueue pending_queries_;
   std::map<uint64, Query> sent_queries_;
   std::deque<NetQueryPtr> pending_invoke_after_queries_;
   ListNode sent_queries_list_;
@@ -157,6 +168,7 @@ class Session final
   bool close_flag_ = false;
 
   static constexpr double ACTIVITY_TIMEOUT = 60 * 5;
+  static constexpr size_t MAX_INFLIGHT_QUERIES = 1024;
 
   struct ContainerInfo {
     size_t ref_cnt;
@@ -179,29 +191,29 @@ class Session final
   void auth_loop();
 
   // mtproto::Connection::Callback
-  void on_connected() override;
-  void on_closed(Status status) override;
+  void on_connected() final;
+  void on_closed(Status status) final;
 
-  Status on_pong() override;
+  Status on_pong() final;
 
-  void on_auth_key_updated() override;
-  void on_tmp_auth_key_updated() override;
-  void on_server_salt_updated() override;
-  void on_server_time_difference_updated() override;
+  void on_auth_key_updated() final;
+  void on_tmp_auth_key_updated() final;
+  void on_server_salt_updated() final;
+  void on_server_time_difference_updated() final;
 
-  void on_session_created(uint64 unique_id, uint64 first_id) override;
-  void on_session_failed(Status status) override;
+  void on_session_created(uint64 unique_id, uint64 first_id) final;
+  void on_session_failed(Status status) final;
 
-  void on_container_sent(uint64 container_id, vector<uint64> msg_ids) override;
+  void on_container_sent(uint64 container_id, vector<uint64> msg_ids) final;
 
-  void on_message_ack(uint64 id) override;
-  Status on_message_result_ok(uint64 id, BufferSlice packet, size_t original_size) override;
-  void on_message_result_error(uint64 id, int error_code, BufferSlice message) override;
-  void on_message_failed(uint64 id, Status status) override;
+  void on_message_ack(uint64 id) final;
+  Status on_message_result_ok(uint64 id, BufferSlice packet, size_t original_size) final;
+  void on_message_result_error(uint64 id, int error_code, BufferSlice message) final;
+  void on_message_failed(uint64 id, Status status) final;
 
-  void on_message_info(uint64 id, int32 state, uint64 answer_id, int32 answer_size) override;
+  void on_message_info(uint64 id, int32 state, uint64 answer_id, int32 answer_size) final;
 
-  Status on_destroy_auth_key() override;
+  Status on_destroy_auth_key() final;
 
   void flush_pending_invoke_after_queries();
   bool has_queries() const;
@@ -236,15 +248,15 @@ class Session final
   bool need_send_check_main_key() const;
   bool connection_send_check_main_key(ConnectionInfo *info);
 
-  void on_result(NetQueryPtr query) override;
+  void on_result(NetQueryPtr query) final;
 
   void on_bind_result(NetQueryPtr query);
   void on_check_key_result(NetQueryPtr query);
 
-  void start_up() override;
-  void loop() override;
-  void hangup() override;
-  void raw_event(const Event::Raw &event) override;
+  void start_up() final;
+  void loop() final;
+  void hangup() final;
+  void raw_event(const Event::Raw &event) final;
 
   friend StringBuilder &operator<<(StringBuilder &sb, Mode mode) {
     return sb << (mode == Mode::Http ? "Http" : "Tcp");

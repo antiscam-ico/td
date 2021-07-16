@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -23,7 +23,7 @@
 
 namespace td {
 
-class TempAuthKeyWatchdog : public NetQueryCallback {
+class TempAuthKeyWatchdog final : public NetQueryCallback {
   class RegisteredAuthKeyImpl {
    public:
     explicit RegisteredAuthKeyImpl(int64 auth_key_id)
@@ -43,6 +43,9 @@ class TempAuthKeyWatchdog : public NetQueryCallback {
   };
 
  public:
+  explicit TempAuthKeyWatchdog(ActorShared<> parent) : parent_(std::move(parent)) {
+  }
+
   using RegisteredAuthKey = unique_ptr<RegisteredAuthKeyImpl>;
 
   static RegisteredAuthKey register_auth_key_id(int64 id) {
@@ -54,6 +57,7 @@ class TempAuthKeyWatchdog : public NetQueryCallback {
   static constexpr double SYNC_WAIT = 0.1;
   static constexpr double SYNC_WAIT_MAX = 1.0;
 
+  ActorShared<> parent_;
   std::map<uint64, uint32> id_count_;
   double sync_at_ = 0;
   bool need_sync_ = false;
@@ -92,7 +96,7 @@ class TempAuthKeyWatchdog : public NetQueryCallback {
     set_timeout_at(min(sync_at_, now + SYNC_WAIT));
   }
 
-  void timeout_expired() override {
+  void timeout_expired() final {
     LOG(DEBUG) << "Sync timeout expired";
     CHECK(!run_sync_);
     if (!need_sync_) {

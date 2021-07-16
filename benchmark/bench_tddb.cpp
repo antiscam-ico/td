@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -11,7 +11,7 @@
 #include "td/telegram/ServerMessageId.h"
 #include "td/telegram/UserId.h"
 
-#include "td/actor/actor.h"
+#include "td/actor/ConcurrentScheduler.h"
 #include "td/actor/PromiseFuture.h"
 
 #include "td/db/SqliteConnectionSafe.h"
@@ -37,17 +37,17 @@ static Status init_db(SqliteDb &db) {
   return Status::OK();
 }
 
-class MessagesDbBench : public Benchmark {
+class MessagesDbBench final : public Benchmark {
  public:
-  string get_description() const override {
+  string get_description() const final {
     return "MessagesDb";
   }
-  void start_up() override {
+  void start_up() final {
     LOG(ERROR) << "START UP";
     do_start_up().ensure();
     scheduler_->start();
   }
-  void run(int n) override {
+  void run(int n) final {
     auto guard = scheduler_->get_main_guard();
     for (int i = 0; i < n; i += 20) {
       auto dialog_id = DialogId{UserId{Random::fast(1, 100)}};
@@ -62,11 +62,12 @@ class MessagesDbBench : public Benchmark {
 
         // use async on same thread.
         messages_db_async_->add_message({dialog_id, message_id}, unique_message_id, sender_user_id, random_id,
-                                        ttl_expires_at, 0, 0, "", NotificationId(), std::move(data), Promise<>());
+                                        ttl_expires_at, 0, 0, "", NotificationId(), MessageId(), std::move(data),
+                                        Promise<>());
       }
     }
   }
-  void tear_down() override {
+  void tear_down() final {
     scheduler_->run_main(0.1);
     {
       auto guard = scheduler_->get_main_guard();
@@ -112,5 +113,4 @@ class MessagesDbBench : public Benchmark {
 int main() {
   SET_VERBOSITY_LEVEL(VERBOSITY_NAME(WARNING));
   bench(td::MessagesDbBench());
-  return 0;
 }

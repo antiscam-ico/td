@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -19,11 +19,9 @@
 namespace td {
 
 // combines identical queries into one request
-class QueryCombiner : public Actor {
+class QueryCombiner final : public Actor {
  public:
-  explicit QueryCombiner(Slice name, double min_delay = 0) : min_delay_(min_delay) {
-    register_actor(name, this).release();
-  }
+  QueryCombiner(Slice name, double min_delay);
 
   void add_query(int64 query_id, Promise<Promise<Unit>> &&send_query, Promise<Unit> &&promise);
 
@@ -36,7 +34,7 @@ class QueryCombiner : public Actor {
 
   int32 query_count_ = 0;
 
-  double next_query_time_ = 0.0;
+  double next_query_time_;
   double min_delay_;
 
   std::queue<int64> delayed_queries_;
@@ -47,7 +45,7 @@ class QueryCombiner : public Actor {
 
   void on_get_query_result(int64 query_id, Result<Unit> &&result);
 
-  void loop() override;
+  void loop() final;
 };
 
 }  // namespace td

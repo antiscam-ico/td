@@ -1,10 +1,11 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #include "td/actor/actor.h"
+#include "td/actor/ConcurrentScheduler.h"
 
 #include "td/net/HttpOutboundConnection.h"
 #include "td/net/HttpQuery.h"
@@ -23,8 +24,8 @@ namespace td {
 
 std::atomic<int> counter;
 
-class HttpClient : public HttpOutboundConnection::Callback {
-  void start_up() override {
+class HttpClient final : public HttpOutboundConnection::Callback {
+  void start_up() final {
     IPAddress addr;
     addr.init_ipv4_port("127.0.0.1", 8082).ensure();
     auto fd = SocketFd::open(addr);
@@ -36,12 +37,12 @@ class HttpClient : public HttpOutboundConnection::Callback {
     cnt_ = 100000;
     counter++;
   }
-  void tear_down() override {
+  void tear_down() final {
     if (--counter == 0) {
       Scheduler::instance()->finish();
     }
   }
-  void loop() override {
+  void loop() final {
     if (cnt_-- < 0) {
       return stop();
     }
@@ -49,10 +50,10 @@ class HttpClient : public HttpOutboundConnection::Callback {
     send_closure(connection_, &HttpOutboundConnection::write_ok);
     LOG(INFO) << "SEND";
   }
-  void handle(unique_ptr<HttpQuery> result) override {
+  void handle(unique_ptr<HttpQuery> result) final {
     loop();
   }
-  void on_connection_error(Status error) override {
+  void on_connection_error(Status error) final {
     LOG(ERROR) << "ERROR: " << error;
   }
 

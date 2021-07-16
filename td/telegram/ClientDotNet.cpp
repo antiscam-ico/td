@@ -1,21 +1,36 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
+#pragma managed(push, off)
 #include "td/telegram/Client.h"
+#pragma managed(pop)
 
 #include "td/telegram/TdDotNetApi.h"
 
 #include "td/utils/port/CxCli.h"
 
+#pragma managed(push, off)
 #include <cstdint>
+#pragma managed(pop)
 
 namespace Telegram {
 namespace Td {
 
 using namespace CxCli;
+
+#if !TD_CLI
+/// <summary>
+/// A type of callback function that will be called when a message is added to the internal TDLib log.
+/// </summary>
+/// <param name="verbosityLevel">Log verbosity level with which the message was added (-1 - 1024).
+/// If 0, then TDLib will crash as soon as the callback returns.
+/// None of the TDLib methods can be called from the callback.</param>
+/// <param name="message">Null-terminated string with the message added to the log.</param>
+public delegate void LogMessageCallback(int verbosityLevel, String^ message);
+#endif
 
 /// <summary>
 /// Interface for handler for results of queries to TDLib and incoming updates from TDLib.
@@ -73,14 +88,6 @@ public:
   }
 
   /// <summary>
-  /// Replaces handler for incoming updates from the TDLib.
-  /// </summary>
-  /// <param name="updatesHandler">Handler with OnResult method which will be called for every incoming update from the TDLib.</param>
-  void SetUpdatesHandler(ClientResultHandler^ updatesHandler) {
-    handlers[0] = updatesHandler;
-  }
-
-  /// <summary>
   /// Launches a cycle which will fetch all results of queries to TDLib and incoming updates from TDLib.
   /// Must be called once on a separate dedicated thread, on which all updates and query results will be handled.
   /// Returns only when TDLib instance is closed.
@@ -103,16 +110,36 @@ public:
   /// <summary>
   /// Creates new Client.
   /// </summary>
-  /// <param name="updatesHandler">Handler for incoming updates.</param>
+  /// <param name="updateHandler">Handler for incoming updates.</param>
   /// <returns>Returns created Client.</returns>
-  static Client^ Create(ClientResultHandler^ updatesHandler) {
-    return REF_NEW Client(updatesHandler);
+  static Client^ Create(ClientResultHandler^ updateHandler) {
+    return REF_NEW Client(updateHandler);
   }
 
+#if !TD_CLI
+  /// <summary>
+  /// Sets the callback that will be called when a message is added to the internal TDLib log.
+  /// None of the TDLib methods can be called from the callback.
+  /// </summary>
+  /// <param name="max_verbosity_level">The maximum verbosity level of messages for which the callback will be called.</param>
+  /// <param name="callback">Callback that will be called when a message is added to the internal TDLib log.
+  /// Pass null to remove the callback.</param>
+  static void SetLogMessageCallback(std::int32_t max_verbosity_level, LogMessageCallback^ callback) {
+    std::lock_guard<std::mutex> lock(logMutex);
+    if (callback == nullptr) {
+      ::td::ClientManager::set_log_message_callback(max_verbosity_level, nullptr);
+      logMessageCallback = nullptr;
+    } else {
+      logMessageCallback = callback;
+      ::td::ClientManager::set_log_message_callback(max_verbosity_level, LogMessageCallbackWrapper);
+    }
+  }
+#endif
+
 private:
-  Client(ClientResultHandler^ updatesHandler) {
+  Client(ClientResultHandler^ updateHandler) {
     client = new td::Client();
-    handlers[0] = updatesHandler;
+    handlers[0] = updateHandler;
   }
 
   ~Client() {
@@ -131,7 +158,24 @@ private:
       handler->OnResult(object);
     }
   }
+
+#if !TD_CLI
+  static std::mutex logMutex;
+  static LogMessageCallback^ logMessageCallback;
+
+  static void LogMessageCallbackWrapper(int verbosity_level, const char *message) {
+    auto callback = logMessageCallback;
+    if (callback != nullptr) {
+      callback(verbosity_level, string_from_unmanaged(message));
+    }
+  }
+#endif
 };
+
+#if !TD_CLI
+std::mutex Client::logMutex;
+LogMessageCallback^ Client::logMessageCallback;
+#endif
 
 }  // namespace Td
 }  // namespace Telegram

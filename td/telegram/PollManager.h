@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -33,7 +33,7 @@ struct BinlogEvent;
 
 class Td;
 
-class PollManager : public Actor {
+class PollManager final : public Actor {
  public:
   PollManager(Td *td, ActorShared<> parent);
 
@@ -41,7 +41,7 @@ class PollManager : public Actor {
   PollManager &operator=(const PollManager &) = delete;
   PollManager(PollManager &&) = delete;
   PollManager &operator=(PollManager &&) = delete;
-  ~PollManager() override;
+  ~PollManager() final;
 
   static bool is_local_poll_id(PollId poll_id);
 
@@ -138,8 +138,8 @@ class PollManager : public Actor {
   class SetPollAnswerLogEvent;
   class StopPollLogEvent;
 
-  void start_up() override;
-  void tear_down() override;
+  void start_up() final;
+  void tear_down() final;
 
   static void on_update_poll_timeout_callback(void *poll_manager_ptr, int64 poll_id_int);
 
@@ -181,10 +181,12 @@ class PollManager : public Actor {
 
   void on_get_poll_results(PollId poll_id, uint64 generation, Result<tl_object_ptr<telegram_api::Updates>> result);
 
-  void do_set_poll_answer(PollId poll_id, FullMessageId full_message_id, vector<string> &&options, uint64 logevent_id,
+  void do_set_poll_answer(PollId poll_id, FullMessageId full_message_id, vector<string> &&options, uint64 log_event_id,
                           Promise<Unit> &&promise);
 
   void on_set_poll_answer(PollId poll_id, uint64 generation, Result<tl_object_ptr<telegram_api::Updates>> &&result);
+
+  void on_set_poll_answer_finished(PollId poll_id, Result<Unit> &&result, vector<Promise<Unit>> &&promises);
 
   void invalidate_poll_voters(const Poll *poll, PollId poll_id);
 
@@ -192,11 +194,11 @@ class PollManager : public Actor {
 
   PollOptionVoters &get_poll_option_voters(const Poll *poll, PollId poll_id, int32 option_id);
 
-  void on_get_poll_voters(PollId poll_id, int32 option_id, int32 limit,
+  void on_get_poll_voters(PollId poll_id, int32 option_id, string offset, int32 limit,
                           Result<tl_object_ptr<telegram_api::messages_votesList>> &&result);
 
   void do_stop_poll(PollId poll_id, FullMessageId full_message_id, unique_ptr<ReplyMarkup> &&reply_markup,
-                    uint64 logevent_id, Promise<Unit> &&promise);
+                    uint64 log_event_id, Promise<Unit> &&promise);
 
   MultiTimeout update_poll_timeout_{"UpdatePollTimeout"};
   MultiTimeout close_poll_timeout_{"ClosePollTimeout"};
@@ -211,7 +213,7 @@ class PollManager : public Actor {
     vector<string> options_;
     vector<Promise<Unit>> promises_;
     uint64 generation_ = 0;
-    uint64 logevent_id_ = 0;
+    uint64 log_event_id_ = 0;
     NetQueryRef query_ref_;
   };
   std::unordered_map<PollId, PendingPollAnswer, PollIdHash> pending_answers_;

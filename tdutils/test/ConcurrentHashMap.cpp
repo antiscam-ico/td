@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -177,7 +177,7 @@ class ConcurrentHashMapJunction {
 }  // namespace td
 
 template <class HashMap>
-class HashMapBenchmark : public td::Benchmark {
+class HashMapBenchmark final : public td::Benchmark {
   struct Query {
     int key;
     int value;
@@ -187,22 +187,22 @@ class HashMapBenchmark : public td::Benchmark {
 
   size_t threads_n = 16;
   int mod_;
-  static constexpr size_t mul_ = 7273;  //1000000000 + 7;
+  static constexpr size_t MUL = 7273;  //1000000000 + 7;
   int n_;
 
  public:
   explicit HashMapBenchmark(size_t threads_n) : threads_n(threads_n) {
   }
-  std::string get_description() const override {
+  std::string get_description() const final {
     return HashMap::get_name();
   }
-  void start_up_n(int n) override {
-    n *= (int)threads_n;
+  void start_up_n(int n) final {
+    n *= static_cast<int>(threads_n);
     n_ = n;
     hash_map = td::make_unique<HashMap>(n * 2);
   }
 
-  void run(int n) override {
+  void run(int n) final {
     n = n_;
     std::vector<td::thread> threads;
 
@@ -211,7 +211,7 @@ class HashMapBenchmark : public td::Benchmark {
       size_t r = n * (i + 1) / threads_n;
       threads.emplace_back([l, r, this] {
         for (size_t i = l; i < r; i++) {
-          auto x = td::narrow_cast<int>((i + 1) * mul_ % n_) + 3;
+          auto x = td::narrow_cast<int>((i + 1) * MUL % n_) + 3;
           auto y = td::narrow_cast<int>(i + 2);
           hash_map->insert(x, y);
         }
@@ -222,9 +222,9 @@ class HashMapBenchmark : public td::Benchmark {
     }
   }
 
-  void tear_down() override {
+  void tear_down() final {
     for (int i = 0; i < n_; i++) {
-      auto x = td::narrow_cast<int>((i + 1) * mul_ % n_) + 3;
+      auto x = td::narrow_cast<int>((i + 1) * MUL % n_) + 3;
       auto y = td::narrow_cast<int>(i + 2);
       ASSERT_EQ(y, hash_map->find(x, -1));
     }

@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -14,6 +14,7 @@
 #include "td/utils/JsonBuilder.h"
 #include "td/utils/misc.h"
 #include "td/utils/Slice.h"
+#include "td/utils/SliceBuilder.h"
 #include "td/utils/Status.h"
 #include "td/utils/tl_storers.h"
 
@@ -149,14 +150,14 @@ Status from_json(std::vector<T> &to, JsonValue from) {
 }
 
 template <class T>
-class DowncastHelper : public T {
+class DowncastHelper final : public T {
  public:
   explicit DowncastHelper(int32 constructor) : constructor_(constructor) {
   }
-  int32 get_id() const override {
+  int32 get_id() const final {
     return constructor_;
   }
-  void store(TlStorerToString &s, const char *field_name) const override {
+  void store(TlStorerToString &s, const char *field_name) const final {
   }
 
  private:

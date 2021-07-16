@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -18,7 +18,7 @@
 
 namespace td {
 
-class PhoneNumberManager : public NetActor {
+class PhoneNumberManager final : public NetActor {
  public:
   enum class Type : int32 { ChangePhone, VerifyPhone, ConfirmPhone };
   PhoneNumberManager(Type type, ActorShared<> parent);
@@ -62,8 +62,8 @@ class PhoneNumberManager : public NetActor {
 
   void on_check_code_result(NetQueryPtr &result);
   void on_send_code_result(NetQueryPtr &result);
-  void on_result(NetQueryPtr result) override;
-  void tear_down() override;
+  void on_result(NetQueryPtr result) final;
+  void tear_down() final;
 };
 
 }  // namespace td

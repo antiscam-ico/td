@@ -1,24 +1,30 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #pragma once
 
+#pragma managed(push, off)
 #include "td/utils/port/config.h"
+#pragma managed(pop)
 
 #include "td/utils/common.h"
 
 #if TD_WINRT
 
+#pragma managed(push, off)
 #include "td/utils/port/wstring_convert.h"
+#pragma managed(pop)
 
 #include "collection.h"
 
+#pragma managed(push, off)
 #include <cstdint>
 #include <map>
 #include <mutex>
+#pragma managed(pop)
 
 #undef small
 
@@ -79,7 +85,11 @@ inline std::string string_to_unmanaged(String^ str) {
   if (!str) {
     return std::string();
   }
-  return td::from_wstring(str->Data(), str->Length()).ok();
+  auto r_unmanaged_str = td::from_wstring(str->Data(), str->Length());
+  if (r_unmanaged_str.is_error()) {
+    return std::string();
+  }
+  return r_unmanaged_str.move_as_ok();
 }
 
 inline String^ string_from_unmanaged(const std::string &from) {

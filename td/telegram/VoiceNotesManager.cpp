@@ -1,17 +1,16 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #include "td/telegram/VoiceNotesManager.h"
 
+#include "td/telegram/files/FileManager.h"
 #include "td/telegram/secret_api.h"
+#include "td/telegram/Td.h"
 #include "td/telegram/td_api.h"
 #include "td/telegram/telegram_api.h"
-
-#include "td/telegram/files/FileManager.h"
-#include "td/telegram/Td.h"
 
 #include "td/utils/buffer.h"
 #include "td/utils/logging.h"
@@ -88,7 +87,7 @@ FileId VoiceNotesManager::dup_voice_note(FileId new_id, FileId old_id) {
 
 bool VoiceNotesManager::merge_voice_notes(FileId new_id, FileId old_id, bool can_delete_old) {
   if (!old_id.is_valid()) {
-    LOG(ERROR) << "Old file id is invalid";
+    LOG(ERROR) << "Old file identifier is invalid";
     return true;
   }
 
@@ -170,7 +169,8 @@ tl_object_ptr<telegram_api::InputMedia> VoiceNotesManager::get_input_media(
     return nullptr;
   }
   if (file_view.has_remote_location() && !file_view.main_remote_location().is_web() && input_file == nullptr) {
-    return make_tl_object<telegram_api::inputMediaDocument>(0, file_view.main_remote_location().as_input_document(), 0);
+    return make_tl_object<telegram_api::inputMediaDocument>(0, file_view.main_remote_location().as_input_document(), 0,
+                                                            string());
   }
   if (file_view.has_url()) {
     return make_tl_object<telegram_api::inputMediaDocumentExternal>(0, file_view.url(), 0);
@@ -192,7 +192,7 @@ tl_object_ptr<telegram_api::InputMedia> VoiceNotesManager::get_input_media(
       mime_type = "audio/ogg";
     }
     return make_tl_object<telegram_api::inputMediaUploadedDocument>(
-        0, false /*ignored*/, std::move(input_file), nullptr, mime_type, std::move(attributes),
+        0, false /*ignored*/, false /*ignored*/, std::move(input_file), nullptr, mime_type, std::move(attributes),
         vector<tl_object_ptr<telegram_api::InputDocument>>(), 0);
   } else {
     CHECK(!file_view.has_remote_location());

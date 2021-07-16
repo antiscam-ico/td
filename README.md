@@ -19,7 +19,7 @@ TDLib (Telegram Database library) is a cross-platform library for building [Tele
 
 `TDLib` has many advantages. Notably `TDLib` is:
 
-* **Cross-platform**: `TDLib` can be used on Android, iOS, Windows, macOS, Linux, FreeBSD, OpenBSD, NetBSD, Windows Phone, WebAssembly, watchOS, tvOS, Tizen, Cygwin. It should also work on other *nix systems with or without minimal effort.
+* **Cross-platform**: `TDLib` can be used on Android, iOS, Windows, macOS, Linux, FreeBSD, OpenBSD, NetBSD, illumos, Windows Phone, WebAssembly, watchOS, tvOS, Tizen, Cygwin. It should also work on other *nix systems with or without minimal effort.
 * **Multilanguage**: `TDLib` can be easily used with any programming language that is able to execute C functions. Additionally it already has native Java (using `JNI`) bindings and .NET (using `C++/CLI` and `C++/CX`) bindings.
 * **Easy to use**: `TDLib` takes care of all network implementation details, encryption and local data storage.
 * **High-performance**: in the [Telegram Bot API](https://core.telegram.org/bots/api), each `TDLib` instance handles more than 24000 active bots simultaneously.
@@ -52,7 +52,6 @@ for a list of all available `TDLib` [methods](https://core.telegram.org/tdlib/do
 * gperf (build only)
 * CMake (3.0.2+, build only)
 * PHP (optional, for documentation generation)
-* Doxygen (optional, for documentation generation)
 
 <a name="building"></a>
 ## Building
@@ -127,7 +126,7 @@ To build `TDLib` in Release mode using MSVC, you will need to additionally speci
 
 <a name="using-cxx"></a>
 ## Using in CMake C++ projects
-For C++ projects that use CMake, the best approach is to build `TDLib` as part of your project or to use a prebuilt installation.
+For C++ projects that use CMake, the best approach is to build `TDLib` as part of your project or to install it system-wide.
 
 There are several libraries that you could use in your CMake project:
 
@@ -146,7 +145,7 @@ target_link_libraries(YourTarget PRIVATE Td::TdStatic)
 
 Or you could install `TDLib` and then reference it in your CMakeLists.txt like this:
 ```
-find_package(Td 1.6.3 REQUIRED)
+find_package(Td 1.7.5 REQUIRED)
 target_link_libraries(YourTarget PRIVATE Td::TdStatic)
 ```
 See [example/cpp/CMakeLists.txt](https://github.com/tdlib/td/tree/master/example/cpp/CMakeLists.txt).

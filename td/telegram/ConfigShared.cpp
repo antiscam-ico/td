@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -10,6 +10,7 @@
 
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
+#include "td/utils/SliceBuilder.h"
 
 namespace td {
 
@@ -39,7 +40,7 @@ void ConfigShared::set_option_empty(Slice name) {
   }
 }
 
-void ConfigShared::set_option_integer(Slice name, int32 value) {
+void ConfigShared::set_option_integer(Slice name, int64 value) {
   if (set_option(name, PSLICE() << "I" << value)) {
     on_option_updated(name);
   }
@@ -78,7 +79,7 @@ bool ConfigShared::get_option_boolean(Slice name, bool default_value) const {
   return default_value;
 }
 
-int32 ConfigShared::get_option_integer(Slice name, int32 default_value) const {
+int64 ConfigShared::get_option_integer(Slice name, int64 default_value) const {
   auto str_value = get_option(name);
   if (str_value.empty()) {
     return default_value;
@@ -87,7 +88,7 @@ int32 ConfigShared::get_option_integer(Slice name, int32 default_value) const {
     LOG(ERROR) << "Found \"" << str_value << "\" instead of integer option";
     return default_value;
   }
-  return to_integer<int32>(str_value.substr(1));
+  return to_integer<int64>(str_value.substr(1));
 }
 
 string ConfigShared::get_option_string(Slice name, string default_value) const {
@@ -129,7 +130,7 @@ tl_object_ptr<td_api::OptionValue> ConfigShared::get_option_value_object(Slice v
       }
       break;
     case 'I':
-      return make_tl_object<td_api::optionValueInteger>(to_integer<int32>(value.substr(1)));
+      return make_tl_object<td_api::optionValueInteger>(to_integer<int64>(value.substr(1)));
     case 'S':
       return make_tl_object<td_api::optionValueString>(value.substr(1).str());
   }

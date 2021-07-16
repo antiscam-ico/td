@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -23,6 +23,7 @@ std::string TD_TL_writer_cpp::gen_output_begin() const {
          "#include \"td/utils/common.h\"\n"
          "#include \"td/utils/format.h\"\n"
          "#include \"td/utils/logging.h\"\n"
+         "#include \"td/utils/SliceBuilder.h\"\n"
          "#include \"td/utils/tl_parsers.h\"\n"
          "#include \"td/utils/tl_storers.h\"\n\n"
          "namespace td {\n"
@@ -32,7 +33,7 @@ std::string TD_TL_writer_cpp::gen_output_begin() const {
          "std::string to_string(const BaseObject &value) {\n"
          "  TlStorerToString storer;\n"
          "  value.store(storer, \"\");\n"
-         "  return storer.str();\n"
+         "  return storer.move_as_str();\n"
          "}\n";
 }
 
@@ -305,7 +306,7 @@ std::string TD_TL_writer_cpp::get_pretty_class_name(std::string class_name) cons
 std::string TD_TL_writer_cpp::gen_vector_store(const std::string &field_name, const tl::tl_tree_type *t,
                                                const std::vector<tl::var_description> &vars, int storer_type) const {
   std::string num = field_name.back() == ']' ? "2" : "";
-  return "{ const std::vector<" + gen_type_name(t) + "> &v" + num + " = " + field_name +
+  return "{ const array<" + gen_type_name(t) + "> &v" + num + " = " + field_name +
          "; const std::uint32_t multiplicity" + num + " = static_cast<std::uint32_t>(v" + num +
          ".size()); const auto vector_name" + num + " = \"" + get_pretty_class_name("vector") +
          "[\" + td::to_string(multiplicity" + num + ")+ \"]\"; s.store_class_begin(\"" +
@@ -662,7 +663,7 @@ std::string TD_TL_writer_cpp::gen_constructor_field_init(int field_num, const st
   }
   std::string move_begin;
   std::string move_end;
-  if ((field_type == "bytes" || field_type.compare(0, 11, "std::vector") == 0 ||
+  if ((field_type == "bytes" || field_type.compare(0, 5, "array") == 0 ||
        field_type.compare(0, 10, "object_ptr") == 0) &&
       !is_default) {
     move_begin = "std::move(";

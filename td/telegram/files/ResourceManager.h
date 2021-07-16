@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -17,7 +17,8 @@
 #include <utility>
 
 namespace td {
-class ResourceManager : public Actor {
+
+class ResourceManager final : public Actor {
  public:
   enum class Mode : int32 { Baseline, Greedy };
   explicit ResourceManager(Mode mode) : mode_(mode) {
@@ -28,10 +29,12 @@ class ResourceManager : public Actor {
 
   void register_worker(ActorShared<FileLoaderActor> callback, int8 priority);
 
+  static constexpr int64 MAX_RESOURCE_LIMIT = 1 << 21;
+
  private:
   Mode mode_;
   using NodeId = uint64;
-  struct Node : public HeapNode {
+  struct Node final : public HeapNode {
     NodeId node_id;
 
     ResourceState resource_state_;
@@ -53,13 +56,14 @@ class ResourceManager : public Actor {
   ActorShared<> parent_;
   bool stop_flag_ = false;
 
-  void hangup_shared() override;
+  void hangup_shared() final;
 
-  void loop() override;
+  void loop() final;
 
   void add_to_heap(Node *node);
   bool satisfy_node(NodeId file_node_id);
   void add_node(NodeId node_id, int8 priority);
   bool remove_node(NodeId node_id);
 };
+
 }  // namespace td

@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -19,6 +19,7 @@
 
 #include "td/utils/format.h"
 #include "td/utils/logging.h"
+#include "td/utils/misc.h"
 #include "td/utils/port/Clocks.h"
 #include "td/utils/tl_helpers.h"
 
@@ -161,7 +162,11 @@ void Global::save_server_time() {
 }
 
 void Global::do_save_server_time_difference() {
-  LOG(INFO) << "Save server time difference";
+  if (shared_config_ != nullptr && shared_config_->get_option_boolean("disable_time_adjustment_protection")) {
+    td_db()->get_binlog_pmc()->erase("server_time_difference");
+    return;
+  }
+
   // diff = server_time - Time::now
   // fixed_diff = server_time - Clocks::system
   double system_time = Clocks::system();
@@ -197,7 +202,7 @@ double Global::get_dns_time_difference() const {
 
 DcId Global::get_webfile_dc_id() const {
   CHECK(shared_config_ != nullptr);
-  int32 dc_id = shared_config_->get_option_integer("webfile_dc_id");
+  auto dc_id = narrow_cast<int32>(shared_config_->get_option_integer("webfile_dc_id"));
   if (!DcId::is_valid(dc_id)) {
     if (is_test_dc()) {
       dc_id = 2;
@@ -211,9 +216,14 @@ DcId Global::get_webfile_dc_id() const {
   return DcId::internal(dc_id);
 }
 
-bool Global::ignore_backgrond_updates() const {
+bool Global::ignore_background_updates() const {
   return !parameters_.use_file_db && !parameters_.use_secret_chats &&
          shared_config_->get_option_boolean("ignore_background_updates");
+}
+
+void Global::set_net_query_stats(std::shared_ptr<NetQueryStats> net_query_stats) {
+  net_query_creator_.set_create_func(
+      [net_query_stats = std::move(net_query_stats)] { return td::make_unique<NetQueryCreator>(net_query_stats); });
 }
 
 void Global::set_net_query_dispatcher(unique_ptr<NetQueryDispatcher> net_query_dispatcher) {
@@ -257,7 +267,7 @@ void Global::add_location_access_hash(double latitude, double longitude, int64 a
   location_access_hashes_[get_location_key(latitude, longitude)] = access_hash;
 }
 
-double get_server_time() {
+double get_global_server_time() {
   return G()->server_time();
 }
 

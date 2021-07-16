@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -8,8 +8,6 @@
 
 #include "td/utils/Slice.h"
 #include "td/utils/tests.h"
-
-REGISTER_TESTS(string_cleaning);
 
 using namespace td;
 
@@ -85,11 +83,11 @@ TEST(StringCleaning, strip_empty_characters) {
   check_strip_empty_characters("/abc", 0, "");
   check_strip_empty_characters("/abc", 10000000, "/abc");
   string spaces =
-      u8"\u1680\u180E\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200B\u202F\u205F\u3000\uFEFF"
-      u8"\uFFFC\uFFFC";
-  string spaces_replace = "                    ";
+      u8"\u1680\u180E\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u202F\u205F\u2800\u3000\uFFFC"
+      u8"\uFFFC";
+  string spaces_replace = "                   ";
   string rtlo = u8"\u202E";
-  string empty = "\xE2\x80\x8C\xE2\x80\x8D\xE2\x80\xAE\xC2\xA0\xC2\xA0";
+  string empty = "\xE2\x80\x8B\xE2\x80\x8C\xE2\x80\x8D\xE2\x80\x8E\xE2\x80\x8F\xE2\x80\xAE\xC2\xA0\xC2\xA0";
 
   check_strip_empty_characters(spaces, 1000000, "");
   check_strip_empty_characters(spaces + rtlo, 1000000, "");

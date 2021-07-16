@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -13,6 +13,7 @@
 #include "td/utils/Closure.h"
 #include "td/utils/Heap.h"
 #include "td/utils/List.h"
+#include "td/utils/logging.h"
 #include "td/utils/MovableValue.h"
 #include "td/utils/MpscPollableQueue.h"
 #include "td/utils/ObjectPool.h"
@@ -31,6 +32,8 @@
 #include <utility>
 
 namespace td {
+
+extern int VERBOSITY_NAME(actor);
 
 class ActorInfo;
 
@@ -145,21 +148,20 @@ class Scheduler {
 
  private:
   static void set_scheduler(Scheduler *scheduler);
-  /*** ServiceActor ***/
+
   class ServiceActor final : public Actor {
    public:
     void set_queue(std::shared_ptr<MpscPollableQueue<EventFull>> queues);
-    void start_up() override;
+    void start_up() final;
 
    private:
     std::shared_ptr<MpscPollableQueue<EventFull>> inbound_;
     bool subscribed_{false};
-    void loop() override;
-    void tear_down() override;
+    void loop() final;
+    void tear_down() final;
   };
   friend class ServiceActor;
 
-  void do_custom_event(ActorInfo *actor, CustomEvent &event);
   void do_event(ActorInfo *actor, Event &&event);
 
   void enter_actor(ActorInfo *actor_info);

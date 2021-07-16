@@ -1,11 +1,12 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #include "td/db/SqliteKeyValue.h"
 
+#include "td/utils/logging.h"
 #include "td/utils/ScopeGuard.h"
 
 namespace td {
@@ -64,7 +65,11 @@ Status SqliteKeyValue::drop() {
 SqliteKeyValue::SeqNo SqliteKeyValue::set(Slice key, Slice value) {
   set_stmt_.bind_blob(1, key).ensure();
   set_stmt_.bind_blob(2, value).ensure();
-  set_stmt_.step().ensure();
+  auto status = set_stmt_.step();
+  if (status.is_error()) {
+    LOG(FATAL) << "Failed to set \"" << key << "\": " << status.error();
+  }
+  // set_stmt_.step().ensure();
   set_stmt_.reset();
   return 0;
 }

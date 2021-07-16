@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -34,22 +34,37 @@ struct CallProtocol {
   int32 max_layer{65};
   vector<string> library_versions;
 
-  static CallProtocol from_telegram_api(const telegram_api::phoneCallProtocol &protocol);
-  tl_object_ptr<telegram_api::phoneCallProtocol> as_telegram_api() const;
-  static CallProtocol from_td_api(const td_api::callProtocol &protocol);
-  tl_object_ptr<td_api::callProtocol> as_td_api() const;
+  CallProtocol() = default;
+
+  explicit CallProtocol(const td_api::callProtocol &protocol);
+
+  explicit CallProtocol(const telegram_api::phoneCallProtocol &protocol);
+
+  tl_object_ptr<telegram_api::phoneCallProtocol> get_input_phone_call_protocol() const;
+
+  tl_object_ptr<td_api::callProtocol> get_call_protocol_object() const;
 };
 
 struct CallConnection {
+  enum class Type : int32 { Telegram, Webrtc };
+  Type type;
   int64 id;
   string ip;
   string ipv6;
   int32 port;
+
+  // Telegram
   string peer_tag;
 
-  static CallConnection from_telegram_api(const telegram_api::phoneConnection &connection);
-  tl_object_ptr<telegram_api::phoneConnection> as_telegram_api() const;
-  tl_object_ptr<td_api::callConnection> as_td_api() const;
+  // WebRTC
+  string username;
+  string password;
+  bool supports_turn = false;
+  bool supports_stun = false;
+
+  explicit CallConnection(const telegram_api::PhoneConnection &connection);
+
+  tl_object_ptr<td_api::callServer> get_call_server_object() const;
 };
 
 struct CallState {
@@ -71,17 +86,19 @@ struct CallState {
 
   Status error;
 
-  tl_object_ptr<td_api::CallState> as_td_api() const;
+  tl_object_ptr<td_api::CallState> get_call_state_object() const;
 };
 
-class CallActor : public NetQueryCallback {
+class CallActor final : public NetQueryCallback {
  public:
   CallActor(CallId call_id, ActorShared<> parent, Promise<int64> promise);
 
   void create_call(UserId user_id, tl_object_ptr<telegram_api::InputUser> &&input_user, CallProtocol &&protocol,
                    bool is_video, Promise<CallId> &&promise);
-  void discard_call(bool is_disconnected, int32 duration, bool is_video, int64 connection_id, Promise<> promise);
   void accept_call(CallProtocol &&protocol, Promise<> promise);
+  void update_call_signaling_data(string data);
+  void send_call_signaling_data(string &&data, Promise<> promise);
+  void discard_call(bool is_disconnected, int32 duration, bool is_video, int64 connection_id, Promise<> promise);
   void rate_call(int32 rating, string comment, vector<td_api::object_ptr<td_api::CallProblem>> &&problems,
                  Promise<> promise);
   void send_call_debug_information(string data, Promise<> promise);
@@ -93,7 +110,7 @@ class CallActor : public NetQueryCallback {
   ActorShared<> parent_;
   Promise<int64> call_id_promise_;
 
-  DhHandshake dh_handshake_;
+  mtproto::DhHandshake dh_handshake_;
   std::shared_ptr<DhConfig> dh_config_;
   bool dh_config_query_sent_{false};
   bool dh_config_ready_{false};
@@ -147,42 +164,42 @@ class CallActor : public NetQueryCallback {
   Status do_update_call(telegram_api::phoneCallDiscarded &call);
 
   void send_received_query();
-  void on_received_query_result(NetQueryPtr net_query);
+  void on_received_query_result(Result<NetQueryPtr> r_net_query);
 
   void try_send_request_query();
-  void on_request_query_result(NetQueryPtr net_query);
+  void on_request_query_result(Result<NetQueryPtr> r_net_query);
 
   void try_send_accept_query();
-  void on_accept_query_result(NetQueryPtr net_query);
+  void on_accept_query_result(Result<NetQueryPtr> r_net_query);
 
   void try_send_confirm_query();
-  void on_confirm_query_result(NetQueryPtr net_query);
+  void on_confirm_query_result(Result<NetQueryPtr> r_net_query);
 
   void try_send_discard_query();
-  void on_discard_query_result(NetQueryPtr net_query);
+  void on_discard_query_result(Result<NetQueryPtr> r_net_query);
 
   void on_begin_exchanging_key();
 
   void on_call_discarded(CallDiscardReason reason, bool need_rating, bool need_debug, bool is_video);
 
-  void on_set_rating_query_result(NetQueryPtr net_query);
-  void on_set_debug_query_result(NetQueryPtr net_query);
+  void on_set_rating_query_result(Result<NetQueryPtr> r_net_query);
+  void on_set_debug_query_result(Result<NetQueryPtr> r_net_query);
 
-  void on_get_call_config_result(NetQueryPtr net_query);
+  void on_get_call_config_result(Result<NetQueryPtr> r_net_query);
 
   void flush_call_state();
 
   static vector<string> get_emojis_fingerprint(const string &key, const string &g_a);
 
-  void start_up() override;
-  void loop() override;
+  void start_up() final;
+  void loop() final;
 
   Container<Promise<NetQueryPtr>> container_;
-  void on_result(NetQueryPtr query) override;
+  void on_result(NetQueryPtr query) final;
   void send_with_promise(NetQueryPtr query, Promise<NetQueryPtr> promise);
 
-  void timeout_expired() override;
-  void hangup() override;
+  void timeout_expired() final;
+  void hangup() final;
 
   void on_error(Status status);
 };

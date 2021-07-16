@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -10,10 +10,13 @@
 
 #include "td/utils/common.h"
 #include "td/utils/logging.h"
+#include "td/utils/port/detail/skip_eintr.h"
 #include "td/utils/port/IPAddress.h"
 #include "td/utils/port/PollFlags.h"
+#include "td/utils/SliceBuilder.h"
 
 #if TD_PORT_POSIX
+#include <cerrno>
 
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -22,7 +25,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-
 #endif
 
 #if TD_PORT_WINDOWS
@@ -38,7 +40,7 @@ namespace td {
 
 namespace detail {
 #if TD_PORT_WINDOWS
-class ServerSocketFdImpl : private Iocp::Callback {
+class ServerSocketFdImpl final : private Iocp::Callback {
  public:
   ServerSocketFdImpl(NativeFd fd, int socket_family) : info_(std::move(fd)), socket_family_(socket_family) {
     VLOG(fd) << get_native_fd() << " create ServerSocketFd";
@@ -170,7 +172,7 @@ class ServerSocketFdImpl : private Iocp::Callback {
     get_poll_info().add_flags_from_poll(PollFlags::Error());
   }
 
-  void on_iocp(Result<size_t> r_size, WSAOVERLAPPED *overlapped) override {
+  void on_iocp(Result<size_t> r_size, WSAOVERLAPPED *overlapped) final {
     // called from other thread
     if (dec_refcnt() || close_flag_) {
       VLOG(fd) << "Ignore IOCP (server socket is closing)";
@@ -262,7 +264,7 @@ class ServerSocketFdImpl {
   }
 
   Status get_pending_error() {
-    if (!get_poll_info().get_flags().has_pending_error()) {
+    if (!get_poll_info().get_flags_local().has_pending_error()) {
       return Status::OK();
     }
     TRY_STATUS(detail::get_socket_pending_error(get_native_fd()));
@@ -314,8 +316,13 @@ bool ServerSocketFd::empty() const {
 }
 
 Result<ServerSocketFd> ServerSocketFd::open(int32 port, CSlice addr) {
-  IPAddress address;
-  TRY_STATUS(address.init_ipv4_port(addr, port));
+  if (port <= 0 || port >= (1 << 16)) {
+    return Status::Error(PSLICE() << "Invalid server port " << port << " specified");
+  }
+
+  TRY_RESULT(address, IPAddress::get_ip_address(addr));
+  address.set_port(port);
+
   NativeFd fd{socket(address.get_address_family(), SOCK_STREAM, 0)};
   if (!fd) {
     return OS_SOCKET_ERROR("Failed to create a socket");
@@ -331,7 +338,11 @@ Result<ServerSocketFd> ServerSocketFd::open(int32 port, CSlice addr) {
   setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, reinterpret_cast<const char *>(&flags), sizeof(flags));
 #endif
 #elif TD_PORT_WINDOWS
-  BOOL flags = TRUE;
+  BOOL flags = FALSE;
+  if (address.is_ipv6()) {
+    setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<const char *>(&flags), sizeof(flags));
+  }
+  flags = TRUE;
 #endif
   setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&flags), sizeof(flags));
   setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<const char *>(&flags), sizeof(flags));

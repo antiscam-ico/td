@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -36,7 +36,7 @@ Game::Game(Td *td, string title, string description, tl_object_ptr<telegram_api:
   CHECK(td != nullptr);
   CHECK(photo != nullptr);
   photo_ = get_photo(td->file_manager_.get(), std::move(photo), owner_dialog_id);
-  if (photo_.id == -2) {
+  if (photo_.is_empty()) {
     LOG(ERROR) << "Receive empty photo for game " << title;
     photo_.id = 0;  // to prevent null photo in td_api
   }
@@ -58,6 +58,7 @@ Game::Game(UserId bot_user_id, string short_name) : bot_user_id_(bot_user_id), s
   if (!bot_user_id_.is_valid()) {
     bot_user_id_ = UserId();
   }
+  photo_.id = 0;  // to prevent null photo in td_api
 }
 
 bool Game::empty() const {
@@ -93,7 +94,7 @@ const FormattedText &Game::get_text() const {
 tl_object_ptr<td_api::game> Game::get_game_object(Td *td) const {
   return make_tl_object<td_api::game>(
       id_, short_name_, title_, get_formatted_text_object(text_), description_,
-      get_photo_object(td->file_manager_.get(), &photo_),
+      get_photo_object(td->file_manager_.get(), photo_),
       td->animations_manager_->get_animation_object(animation_file_id_, "get_game_object"));
 }
 
@@ -119,7 +120,7 @@ bool operator!=(const Game &lhs, const Game &rhs) {
 }
 
 StringBuilder &operator<<(StringBuilder &string_builder, const Game &game) {
-  return string_builder << "Game[id = " << game.id_ << ", access_hash = " << game.access_hash_
+  return string_builder << "Game[ID = " << game.id_ << ", access_hash = " << game.access_hash_
                         << ", bot = " << game.bot_user_id_ << ", short_name = " << game.short_name_
                         << ", title = " << game.title_ << ", description = " << game.description_
                         << ", photo = " << game.photo_ << ", animation_file_id = " << game.animation_file_id_ << "]";

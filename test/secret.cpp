@@ -1,9 +1,10 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
+#include "td/telegram/FolderId.h"
 #include "td/telegram/Global.h"
 #include "td/telegram/MessageId.h"
 #include "td/telegram/SecretChatActor.h"
@@ -13,6 +14,7 @@
 #include "td/telegram/telegram_api.h"
 
 #include "td/actor/actor.h"
+#include "td/actor/ConcurrentScheduler.h"
 #include "td/actor/PromiseFuture.h"
 
 #include "td/db/binlog/BinlogInterface.h"
@@ -20,12 +22,14 @@
 #include "td/db/BinlogKeyValue.h"
 #include "td/db/DbKey.h"
 
-#include "td/mtproto/DhHandshake.h"
+#include "td/mtproto/DhCallback.h"
 #include "td/mtproto/utils.h"
 
 #include "td/tl/tl_object_parse.h"
 #include "td/tl/tl_object_store.h"
 
+#include "td/utils/algorithm.h"
+#include "td/utils/as.h"
 #include "td/utils/base64.h"
 #include "td/utils/buffer.h"
 #include "td/utils/common.h"
@@ -36,6 +40,7 @@
 #include "td/utils/misc.h"
 #include "td/utils/Random.h"
 #include "td/utils/Slice.h"
+#include "td/utils/SliceBuilder.h"
 #include "td/utils/Status.h"
 #include "td/utils/tests.h"
 #include "td/utils/tl_helpers.h"
@@ -47,8 +52,6 @@
 #include <limits>
 #include <map>
 #include <memory>
-
-REGISTER_TESTS(secret);
 
 namespace my_api {
 
@@ -175,15 +178,17 @@ class messages_sendEncryptedService final {
 
 class messages_sendEncrypted final {
  public:
+  int32 flags_;
   tl_object_ptr<inputEncryptedChat> peer_;
   int64 random_id_{};
   BufferSlice data_;
 
   messages_sendEncrypted() = default;
-  static const int32 ID = -1451792525;
+  static const int32 ID = 1157265941;
 
   explicit messages_sendEncrypted(TlBufferParser &p)
-      : peer_(TlFetchBoxed<TlFetchObject<inputEncryptedChat>, -247351839>::parse(p))
+      : flags_(TlFetchInt::parse(p))
+      , peer_(TlFetchBoxed<TlFetchObject<inputEncryptedChat>, -247351839>::parse(p))
       , random_id_(TlFetchLong::parse(p))
       , data_(TlFetchBytes<BufferSlice>::parse(p)) {
   }
@@ -329,32 +334,32 @@ static string prime_base64 =
     "WC2xF40WnGvEZbDW_5yjko_vW5rk5Bj8Feg-vqD4f6n_Xu1wBQ3tKEn0e_lZ2VaFDOkphR8NgRX2NbEF7i5OFdBLJFS_b0-t8DSxBAMRnNjjuS_MW"
     "w";
 
-class FakeDhCallback : public DhCallback {
+class FakeDhCallback final : public mtproto::DhCallback {
  public:
-  int is_good_prime(Slice prime_str) const override {
+  int is_good_prime(Slice prime_str) const final {
     auto it = cache.find(prime_str.str());
     if (it == cache.end()) {
       return -1;
     }
     return it->second;
   }
-  void add_good_prime(Slice prime_str) const override {
+  void add_good_prime(Slice prime_str) const final {
     cache[prime_str.str()] = 1;
   }
-  void add_bad_prime(Slice prime_str) const override {
+  void add_bad_prime(Slice prime_str) const final {
     cache[prime_str.str()] = 0;
   }
   mutable std::map<string, int> cache;
 };
 
-class FakeBinlog
+class FakeBinlog final
     : public BinlogInterface
     , public Actor {
  public:
   FakeBinlog() {
     register_actor("FakeBinlog", this).release();
   }
-  void force_sync(Promise<> promise) override {
+  void force_sync(Promise<> promise) final {
     if (pending_events_.empty()) {
       pending_events_.emplace_back();
     }
@@ -372,15 +377,15 @@ class FakeBinlog
       }
     }
   }
-  void force_flush() override {
+  void force_flush() final {
   }
 
-  uint64 next_id() override {
+  uint64 next_id() final {
     auto res = last_id_;
     last_id_++;
     return res;
   }
-  uint64 next_id(int32 shift) override {
+  uint64 next_id(int32 shift) final {
     auto res = last_id_;
     last_id_ += shift;
     return res;
@@ -405,15 +410,15 @@ class FakeBinlog
     pending_events_.clear();
   }
 
-  void change_key(DbKey key, Promise<> promise) override {
+  void change_key(DbKey key, Promise<> promise) final {
   }
 
  protected:
-  void close_impl(Promise<> promise) override {
+  void close_impl(Promise<> promise) final {
   }
-  void close_and_destroy_impl(Promise<> promise) override {
+  void close_and_destroy_impl(Promise<> promise) final {
   }
-  void add_raw_event_impl(uint64 id, BufferSlice &&raw_event, Promise<> promise, BinlogDebugInfo info) override {
+  void add_raw_event_impl(uint64 id, BufferSlice &&raw_event, Promise<> promise, BinlogDebugInfo info) final {
     auto event = BinlogEvent(std::move(raw_event), info);
     LOG(INFO) << "ADD EVENT: " << event.id_ << " " << event;
     pending_events_.emplace_back();
@@ -450,10 +455,10 @@ class FakeBinlog
       }
     }
   }
-  void timeout_expired() override {
+  void timeout_expired() final {
     do_force_sync();
   }
-  void wakeup() override {
+  void wakeup() final {
     if (has_request_sync) {
       do_force_sync();
     }
@@ -474,7 +479,7 @@ class FakeBinlog
 using FakeKeyValue = BinlogKeyValue<BinlogInterface>;
 
 class Master;
-class FakeSecretChatContext : public SecretChatActor::Context {
+class FakeSecretChatContext final : public SecretChatActor::Context {
  public:
   FakeSecretChatContext(std::shared_ptr<BinlogInterface> binlog, std::shared_ptr<KeyValueSyncInterface> key_value,
                         std::shared_ptr<bool> close_flag, ActorShared<Master> master)
@@ -485,25 +490,25 @@ class FakeSecretChatContext : public SecretChatActor::Context {
     secret_chat_db_ = std::make_shared<SecretChatDb>(key_value_, 1);
     net_query_creator_.stop_check();  // :(
   }
-  DhCallback *dh_callback() override {
+  mtproto::DhCallback *dh_callback() final {
     return &fake_dh_callback_;
   }
-  NetQueryCreator &net_query_creator() override {
+  NetQueryCreator &net_query_creator() final {
     return net_query_creator_;
   }
-  int32 unix_time() override {
+  int32 unix_time() final {
     return static_cast<int32>(std::time(nullptr));
   }
-  bool close_flag() override {
+  bool close_flag() final {
     return *close_flag_;
   }
-  BinlogInterface *binlog() override {
+  BinlogInterface *binlog() final {
     return binlog_.get();
   }
-  SecretChatDb *secret_chat_db() override {
+  SecretChatDb *secret_chat_db() final {
     return secret_chat_db_.get();
   }
-  std::shared_ptr<DhConfig> dh_config() override {
+  std::shared_ptr<DhConfig> dh_config() final {
     static auto config = [] {
       DhConfig dh_config;
       dh_config.version = 12;
@@ -514,39 +519,38 @@ class FakeSecretChatContext : public SecretChatActor::Context {
 
     return config;
   }
-  void set_dh_config(std::shared_ptr<DhConfig> dh_config) override {
+  void set_dh_config(std::shared_ptr<DhConfig> dh_config) final {
     // empty
   }
 
-  bool get_config_option_boolean(const string &name) const override {
+  bool get_config_option_boolean(const string &name) const final {
     return false;
   }
 
   // We don't want to expose the whole NetQueryDispatcher, MessagesManager and ContactsManager.
   // So it is more clear which parts of MessagesManager is really used. And it is much easier to create tests.
-  void send_net_query(NetQueryPtr query, ActorShared<NetQueryCallback> callback, bool ordered) override;
+  void send_net_query(NetQueryPtr query, ActorShared<NetQueryCallback> callback, bool ordered) final;
 
   void on_update_secret_chat(int64 access_hash, UserId user_id, SecretChatState state, bool is_outbound, int32 ttl,
-                             int32 date, string key_hash, int32 layer) override {
+                             int32 date, string key_hash, int32 layer, FolderId initial_folder_id) final {
   }
 
   void on_inbound_message(UserId user_id, MessageId message_id, int32 date,
                           tl_object_ptr<telegram_api::encryptedFile> file,
-                          tl_object_ptr<secret_api::decryptedMessage> message, Promise<>) override;
+                          tl_object_ptr<secret_api::decryptedMessage> message, Promise<>) final;
 
-  void on_send_message_error(int64 random_id, Status error, Promise<>) override;
-  void on_send_message_ack(int64 random_id) override;
+  void on_send_message_error(int64 random_id, Status error, Promise<>) final;
+  void on_send_message_ack(int64 random_id) final;
   void on_send_message_ok(int64 random_id, MessageId message_id, int32 date,
-                          tl_object_ptr<telegram_api::EncryptedFile> file, Promise<>) override;
-  void on_delete_messages(std::vector<int64> random_id, Promise<>) override;
-  void on_flush_history(MessageId, Promise<>) override;
-  void on_read_message(int64, Promise<>) override;
+                          tl_object_ptr<telegram_api::EncryptedFile> file, Promise<>) final;
+  void on_delete_messages(std::vector<int64> random_id, Promise<>) final;
+  void on_flush_history(bool, MessageId, Promise<>) final;
+  void on_read_message(int64, Promise<>) final;
 
-  void on_screenshot_taken(UserId user_id, MessageId message_id, int32 date, int64 random_id,
-                           Promise<> promise) override {
+  void on_screenshot_taken(UserId user_id, MessageId message_id, int32 date, int64 random_id, Promise<> promise) final {
   }
   void on_set_ttl(UserId user_id, MessageId message_id, int32 date, int32 ttl, int64 random_id,
-                  Promise<> promise) override {
+                  Promise<> promise) final {
   }
 
  private:
@@ -561,11 +565,11 @@ class FakeSecretChatContext : public SecretChatActor::Context {
 };
 NetQueryCreator FakeSecretChatContext::net_query_creator_;
 
-class Master : public Actor {
+class Master final : public Actor {
  public:
   explicit Master(Status *status) : status_(status) {
   }
-  class SecretChatProxy : public Actor {
+  class SecretChatProxy final : public Actor {
    public:
     SecretChatProxy(string name, ActorShared<Master> parent) : name_(std::move(name)) {
       binlog_ = std::make_shared<FakeBinlog>();
@@ -585,12 +589,11 @@ class Master : public Actor {
 
     void add_inbound_message(int32 chat_id, BufferSlice data, uint64 crc) {
       CHECK(crc64(data.as_slice()) == crc);
-      auto event = make_unique<logevent::InboundSecretMessage>();
-      event->qts = 0;
+      auto event = make_unique<log_event::InboundSecretMessage>();
       event->chat_id = chat_id;
       event->date = 0;
       event->encrypted_message = std::move(data);
-      event->qts_ack = PromiseCreator::lambda(
+      event->promise = PromiseCreator::lambda(
           [actor_id = actor_id(this), chat_id, data = event->encrypted_message.copy(), crc](Result<> result) mutable {
             if (result.is_ok()) {
               LOG(INFO) << "FINISH add_inbound_message " << tag("crc", crc);
@@ -665,21 +668,21 @@ class Master : public Actor {
 
       for (auto &event : events) {
         CHECK(event.type_ == LogEvent::HandlerType::SecretChats);
-        auto r_message = logevent::SecretChatEvent::from_buffer_slice(event.data_as_buffer_slice());
+        auto r_message = log_event::SecretChatEvent::from_buffer_slice(event.data_as_buffer_slice());
         LOG_IF(FATAL, r_message.is_error()) << "Failed to deserialize event: " << r_message.error();
         auto message = r_message.move_as_ok();
-        message->set_logevent_id(event.id_);
+        message->set_log_event_id(event.id_);
         LOG(INFO) << "Process binlog event " << *message;
         switch (message->get_type()) {
-          case logevent::SecretChatEvent::Type::InboundSecretMessage:
+          case log_event::SecretChatEvent::Type::InboundSecretMessage:
             send_closure_later(actor_, &SecretChatActor::replay_inbound_message,
-                               unique_ptr<logevent::InboundSecretMessage>(
-                                   static_cast<logevent::InboundSecretMessage *>(message.release())));
+                               unique_ptr<log_event::InboundSecretMessage>(
+                                   static_cast<log_event::InboundSecretMessage *>(message.release())));
             break;
-          case logevent::SecretChatEvent::Type::OutboundSecretMessage:
+          case log_event::SecretChatEvent::Type::OutboundSecretMessage:
             send_closure_later(actor_, &SecretChatActor::replay_outbound_message,
-                               unique_ptr<logevent::OutboundSecretMessage>(
-                                   static_cast<logevent::OutboundSecretMessage *>(message.release())));
+                               unique_ptr<log_event::OutboundSecretMessage>(
+                                   static_cast<log_event::OutboundSecretMessage *>(message.release())));
             break;
           default:
             UNREACHABLE();
@@ -730,7 +733,7 @@ class Master : public Actor {
     }
 
     int32 bad_cnt_ = 0;
-    void timeout_expired() override {
+    void timeout_expired() final {
       LOG(INFO) << "TIMEOUT EXPIRED";
       if (events_cnt_ < 4) {
         bad_cnt_++;
@@ -756,11 +759,11 @@ class Master : public Actor {
   auto &to() {
     return get_by_id(3 - get_link_token());
   }
-  void start_up() override {
+  void start_up() final {
     auto old_context = set_context(std::make_shared<Global>());
     alice_ = create_actor<SecretChatProxy>("SecretChatProxy alice", "alice", actor_shared(this, 1));
     bob_ = create_actor<SecretChatProxy>("SecretChatProxy bob", "bob", actor_shared(this, 2));
-    send_closure(alice_->get_actor_unsafe()->actor_, &SecretChatActor::create_chat, 2, 0, 123,
+    send_closure(alice_->get_actor_unsafe()->actor_, &SecretChatActor::create_chat, UserId(2), 0, 123,
                  PromiseCreator::lambda([actor_id = actor_id(this)](Result<SecretChatId> res) {
                    send_closure(actor_id, &Master::got_secret_chat_id, std::move(res), 0);
                  }));
@@ -783,7 +786,7 @@ class Master : public Actor {
     return false;
   }
   void send_net_query(NetQueryPtr query, ActorShared<NetQueryCallback> callback, bool ordered) {
-    if (can_fail(query) && Random::fast(0, 1) == 0) {
+    if (can_fail(query) && Random::fast_bool()) {
       LOG(INFO) << "Fail query " << query;
       auto resend_promise =
           PromiseCreator::lambda([id = actor_shared(this, get_link_token()), callback_actor = callback.get(),
@@ -837,9 +840,9 @@ class Master : public Actor {
     CHECK(get_link_token() == 1);
     send_closure(alice_->get_actor_unsafe()->actor_, &SecretChatActor::update_chat,
                  make_tl_object<telegram_api::encryptedChatWaiting>(123, 321, 0, 1, 2));
-    send_closure(
-        bob_->get_actor_unsafe()->actor_, &SecretChatActor::update_chat,
-        make_tl_object<telegram_api::encryptedChatRequested>(123, 321, 0, 1, 2, request_encryption.g_a_.clone()));
+    send_closure(bob_->get_actor_unsafe()->actor_, &SecretChatActor::update_chat,
+                 make_tl_object<telegram_api::encryptedChatRequested>(0, false, 123, 321, 0, 1, 2,
+                                                                      request_encryption.g_a_.clone()));
     net_query->clear();
   }
   void process_net_query(my_api::messages_acceptEncryption &&request_encryption, NetQueryPtr net_query,
@@ -861,7 +864,7 @@ class Master : public Actor {
     send_ping(1, 5000);
     set_timeout_in(1);
   }
-  void timeout_expired() override {
+  void timeout_expired() final {
     send_message(1, "oppa");
     send_message(2, "appo");
     set_timeout_in(1);
@@ -880,25 +883,22 @@ class Master : public Actor {
     LOG(INFO) << "Send message: " << tag("id", id) << tag("text", text) << tag("random_id", random_id);
     sent_messages_[random_id] = Message{id, text};
     send_closure(get_by_id(id), &SecretChatProxy::send_message,
-                 secret_api::make_object<secret_api::decryptedMessage>(0, random_id, 0, text, Auto(), Auto(), Auto(),
-                                                                       Auto(), 0));
+                 secret_api::make_object<secret_api::decryptedMessage>(0, false /*ignored*/, random_id, 0, text, Auto(),
+                                                                       Auto(), Auto(), Auto(), 0));
   }
   void process_net_query(my_api::messages_sendEncryptedService &&message, NetQueryPtr net_query,
                          ActorShared<NetQueryCallback> callback) {
-    process_net_query_send_enrypted(std::move(message.data_), std::move(net_query), std::move(callback));
+    process_net_query_send_encrypted(std::move(message.data_), std::move(net_query), std::move(callback));
   }
   void process_net_query(my_api::messages_sendEncrypted &&message, NetQueryPtr net_query,
                          ActorShared<NetQueryCallback> callback) {
-    process_net_query_send_enrypted(std::move(message.data_), std::move(net_query), std::move(callback));
+    process_net_query_send_encrypted(std::move(message.data_), std::move(net_query), std::move(callback));
   }
-  void process_net_query_send_enrypted(BufferSlice data, NetQueryPtr net_query,
-                                       ActorShared<NetQueryCallback> callback) {
-    my_api::messages_sentEncryptedMessage sent_message;
-    sent_message.date_ = 0;
-    auto storer = TLObjectStorer<my_api::messages_sentEncryptedMessage>(sent_message);
-    BufferSlice answer(storer.size());
-    auto real_size = storer.store(answer.as_slice().ubegin());
-    CHECK(real_size == answer.size());
+  void process_net_query_send_encrypted(BufferSlice data, NetQueryPtr net_query,
+                                        ActorShared<NetQueryCallback> callback) {
+    BufferSlice answer(8);
+    answer.as_slice().fill(0);
+    as<int32>(answer.as_slice().begin()) = static_cast<int32>(my_api::messages_sentEncryptedMessage::ID);
     net_query->set_ok(std::move(answer));
     send_closure(std::move(callback), &NetQueryCallback::on_result, std::move(net_query));
 
@@ -964,7 +964,7 @@ class Master : public Actor {
   };
   std::map<int64, Message> sent_messages_;
 
-  void hangup_shared() override {
+  void hangup_shared() final {
     LOG(INFO) << "GOT HANGUP: " << get_link_token();
     send_closure(from(), &SecretChatProxy::on_closed);
   }
@@ -990,7 +990,7 @@ void FakeSecretChatContext::on_send_message_ok(int64 random_id, MessageId messag
 void FakeSecretChatContext::on_delete_messages(std::vector<int64> random_id, Promise<> promise) {
   promise.set_value(Unit());
 }
-void FakeSecretChatContext::on_flush_history(MessageId, Promise<> promise) {
+void FakeSecretChatContext::on_flush_history(bool, MessageId, Promise<> promise) {
   promise.set_error(Status::Error("Unsupported"));
 }
 void FakeSecretChatContext::on_read_message(int64, Promise<> promise) {
@@ -998,6 +998,7 @@ void FakeSecretChatContext::on_read_message(int64, Promise<> promise) {
 }
 
 TEST(Secret, go) {
+  return;
   SET_VERBOSITY_LEVEL(VERBOSITY_NAME(ERROR));
   ConcurrentScheduler sched;
   int threads_n = 0;

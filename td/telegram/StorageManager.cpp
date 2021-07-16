@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -16,6 +16,7 @@
 
 #include "td/db/SqliteDb.h"
 
+#include "td/utils/algorithm.h"
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
 #include "td/utils/port/Clocks.h"
@@ -26,7 +27,7 @@
 
 namespace td {
 
-tl_object_ptr<td_api::databaseStatistics> DatabaseStats::as_td_api() const {
+tl_object_ptr<td_api::databaseStatistics> DatabaseStats::get_database_statistics_object() const {
   return make_tl_object<td_api::databaseStatistics>(debug);
 }
 
@@ -360,7 +361,7 @@ void StorageManager::timeout_expired() {
   next_gc_at_ = 0;
   run_gc({}, false, PromiseCreator::lambda([actor_id = actor_id(this)](Result<FileStats> r_stats) {
            if (!r_stats.is_error() || r_stats.error().code() != 500) {
-             // do not save gc timestamp if request was cancelled
+             // do not save gc timestamp if request was canceled
              send_closure(actor_id, &StorageManager::save_last_gc_timestamp);
            }
            send_closure(actor_id, &StorageManager::schedule_next_gc);

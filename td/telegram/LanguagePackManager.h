@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -27,7 +27,7 @@ namespace td {
 
 class SqliteKeyValue;
 
-class LanguagePackManager : public NetQueryCallback {
+class LanguagePackManager final : public NetQueryCallback {
  public:
   explicit LanguagePackManager(ActorShared<> parent) : parent_(std::move(parent)) {
   }
@@ -35,13 +35,15 @@ class LanguagePackManager : public NetQueryCallback {
   LanguagePackManager &operator=(const LanguagePackManager &) = delete;
   LanguagePackManager(LanguagePackManager &&) = delete;
   LanguagePackManager &operator=(LanguagePackManager &&) = delete;
-  ~LanguagePackManager() override;
+  ~LanguagePackManager() final;
 
   static bool check_language_pack_name(Slice name);
 
   static bool check_language_code_name(Slice name);
 
   static bool is_custom_language_code(Slice language_code);
+
+  string get_main_language_code();
 
   vector<string> get_used_language_codes();
 
@@ -186,11 +188,11 @@ class LanguagePackManager : public NetQueryCallback {
 
   Status do_delete_language(string language_code);
 
-  void on_result(NetQueryPtr query) override;
+  void on_result(NetQueryPtr query) final;
 
-  void start_up() override;
-  void hangup() override;
-  void tear_down() override;
+  void start_up() final;
+  void hangup() final;
+  void tear_down() final;
 
   Container<Promise<NetQueryPtr>> container_;
   void send_with_promise(NetQueryPtr query, Promise<NetQueryPtr> promise);

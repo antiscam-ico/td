@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -8,6 +8,7 @@
 
 #include "td/utils/misc.h"
 #include "td/utils/ScopeGuard.h"
+#include "td/utils/SliceBuilder.h"
 
 #include <cstring>
 
@@ -343,17 +344,17 @@ Result<JsonValue> do_json_decode(Parser &parser, int32 max_depth) {
   parser.skip_whitespaces();
   switch (parser.peek_char()) {
     case 'f':
-      if (parser.skip_start_with("false")) {
+      if (parser.try_skip("false")) {
         return JsonValue::create_boolean(false);
       }
       return Status::Error("Token starts with 'f' -- false expected");
     case 't':
-      if (parser.skip_start_with("true")) {
+      if (parser.try_skip("true")) {
         return JsonValue::create_boolean(true);
       }
       return Status::Error("Token starts with 't' -- true expected");
     case 'n':
-      if (parser.skip_start_with("null")) {
+      if (parser.try_skip("null")) {
         return JsonValue();
       }
       return Status::Error("Token starts with 'n' -- null expected");
@@ -463,17 +464,17 @@ Status do_json_skip(Parser &parser, int32 max_depth) {
   parser.skip_whitespaces();
   switch (parser.peek_char()) {
     case 'f':
-      if (parser.skip_start_with("false")) {
+      if (parser.try_skip("false")) {
         return Status::OK();
       }
       return Status::Error("Starts with 'f' -- false expected");
     case 't':
-      if (parser.skip_start_with("true")) {
+      if (parser.try_skip("true")) {
         return Status::OK();
       }
       return Status::Error("Starts with 't' -- true expected");
     case 'n':
-      if (parser.skip_start_with("null")) {
+      if (parser.try_skip("null")) {
         return Status::OK();
       }
       return Status::Error("Starts with 'n' -- null expected");

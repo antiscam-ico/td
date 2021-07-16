@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2020
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2021
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -8,6 +8,7 @@
 
 #include "td/telegram/misc.h"
 
+#include "td/utils/algorithm.h"
 #include "td/utils/JsonBuilder.h"
 #include "td/utils/logging.h"
 #include "td/utils/misc.h"
@@ -134,7 +135,7 @@ tl_object_ptr<telegram_api::JSONValue> convert_json_value(td_api::object_ptr<td_
 
 namespace {
 
-class JsonableJsonValue : public Jsonable {
+class JsonableJsonValue final : public Jsonable {
  public:
   explicit JsonableJsonValue(const td_api::JsonValue *json_value) : json_value_(json_value) {
   }
